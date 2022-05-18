@@ -93,7 +93,9 @@ compare_abms <- function(runs = 10, timesteps = 1000, hosts = 100,
 ## Explore SD
 attach_sds <- 1:10 * 2
 
-sd_comparisons <- sapply(attach_sds, FUN = function(x) compare_abms(attach_sd = x, detach = 0.1))
+start_time <- Sys.time()
+sd_comparisons <- sapply(attach_sds, FUN = function(x) compare_abms(attach_sd = x))
+end_time <- Sys.time()
 
 plot(sd_comparisons ~ attach_sds)
 
