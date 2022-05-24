@@ -75,15 +75,18 @@ compare_abms <- function(runs = 10, timesteps = 1000, hosts = 100,
   aburdens <- replicate(runs, attach_length_abm(timesteps = timesteps, hosts = hosts,
                                                 move = move, metroid = metroid, 
                                                 attach_length = 1/detach, attach_sd = attach_sd), simplify = FALSE)
-  ## Initialize empty vector for p values from Kolmogorov-Smirnov test
-  ks_ps <- NULL
-  ## Compare all pairs of burden distributions from each abm with the Kolmogorov-Smirnov test
+  ## Initialize empty vector for p values from chi-squared test
+  chi_ps <- NULL
+  ## Compare all pairs of burden distributions from each abm with the chi-squared test
   for (x in 1:length(dburdens)) {
     for (y in 1:length(aburdens)) {
-      ks_ps <- c(ks_ps, ks.test(dburdens[[x]], aburdens[[y]])$p)
+      da_levels <- unique(c(dburdens[[x]], aburdens[[y]]))
+      dx <- unname(summary(factor(dburdens[[x]], levels = da_levels)))
+      ay <- unname(summary(factor(aburdens[[y]], levels = da_levels)))
+      chi_ps <- c(chi_ps, chisq.test(dx, ay)$p.value)
     }
   }
-  return(sum(ks_ps < 0.05)/length(ks_ps))
+  return(sum(chi_ps < 0.05)/length(chi_ps))
 }
 
 ##
@@ -92,12 +95,69 @@ compare_abms <- function(runs = 10, timesteps = 1000, hosts = 100,
 
 ## Explore SD
 attach_sds <- 1:10 * 2
+attach_sds <- 1:100 / 10
 
 start_time <- Sys.time()
 sd_comparisons <- sapply(attach_sds, FUN = function(x) compare_abms(attach_sd = x))
 end_time <- Sys.time()
 
+library(ggplot2)
+sd_data <- data.frame(sd = attach_sds, comp = sd_comparisons)
+ggplot(data = sd_data, aes(x = sd, y = comp)) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  labs(x = "S.D.", y = "Proportion of Signif. Comparisons") +
+  theme_bw()
+
+hist(attach_length_abm(attach_sd = 10))
+hist(detach_rate_abm())
+
+d <- detach_rate_abm()
+a <- attach_length_abm()
+da_levels <- unique(c(d,a))
+dx <- unname(summary(factor(d, levels = da_levels)))
+ay <- unname(summary(factor(a, levels = da_levels)))
+
+unname(summary(factor(detach_rate_abm())))
+unname(summary(factor(attach_length_abm())))
+
+chisq.test(dx, ay)
+
+
+compare_abms(attach_sd = 100)
+
+warnings()
+
+runs = 10
+timesteps = 1000
+hosts = 100
+move = 2
+metroid = 0.3
+detach = 0.2
+attach_sd = 1
+## Create list of detachment rate abm outputs
+dburdens <- replicate(runs, detach_rate_abm(timesteps = timesteps, hosts = hosts,
+                                            move = move, metroid = metroid, detach = detach), simplify = FALSE)
+## Create list of attachment length abm outputs
+aburdens <- replicate(runs, attach_length_abm(timesteps = timesteps, hosts = hosts,
+                                              move = move, metroid = metroid, 
+                                              attach_length = 1/detach, attach_sd = attach_sd), simplify = FALSE)
+## Initialize empty vector for p values from chi-squared test
+chi_ps <- NULL
+## Compare all pairs of burden distributions from each abm with the chi-squared test
+for (x in 1:length(dburdens)) {
+  for (y in 1:length(aburdens)) {
+    xy_chi <- chisq.test(dburdens[[x]], aburdens[[y]])
+    chi_ps <- c(chi_ps, xy_chi$p.value)
+  }
+}
+
+chi_ps
+return(sum(chi_ps < 0.05)/length(chi_ps))
+
 plot(sd_comparisons ~ attach_sds)
+
+
 
 ## Explore transmission rate
 
