@@ -1,17 +1,101 @@
 library(purrr)
+library(landscapeR)
+library(raster)
+
+#### free clustering
+c_factor <- 6
+size <- 12
+landscape <- matrix(0, nrow = size, ncol = size)
+coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), nrow = size^2, ncol = 2)
+rows <- sample(size, size = c_factor)
+cols <- sample(size, size = c_factor)
+avail <- which(!(coords[,1] %in% rows | coords[,2] %in% cols))
+parasite_coords <- coords[sample(avail, size = (size^2)/4),] 
+landscape[parasite_coords] <- 1
+landscape
+
+plot(raster(landscape))
+#####
+
+
+#### single clustering
+c_factor <- 4
+size <- 12
+landscape <- matrix(0, nrow = size, ncol = size)
+coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), nrow = size^2, ncol = 2)
+rows <- (size - c_factor + 1):(size + 1)
+cols <- (size - c_factor + 1):(size + 1)
+avail <- which(!(coords[,1] %in% rows | coords[,2] %in% cols))
+parasite_coords <- coords[sample(avail, size = (size^2)/4),] 
+landscape[parasite_coords] <- 1
+landscape
+
+plot(raster(landscape))
+#####
+
+
+### landscapeR
+
+landscape <- matrix(0, nrow = size, ncol = size)
+land_rast <- raster(landscape, xmn = 0, xmx = 12, ymn = 0, ymx = 12)
+patches <- makeClass(land_rast, npatch = 5, size = 20)
+plot(patches)
+m_patches <- raster::as.matrix(patches)
+which(m_patches == 1)
+m_patches
+sum(m_patches)
+
+avail <- which(m_patches == 1)
+parasite_coords <- coords[sample(avail, size = (size^2)/4),] 
+landscape[parasite_coords] <- 1
+landscape
+
+plot(raster(landscape, xmn = 0, xmx = 12, ymn = 0, ymx = 12))
+
+plot(raster(landscape))
+
+raster::as.matrix(raster(landscape))
+
+####
+
+### 
+
+clusters <- rbinom(n = 1, size = 10, prob = 0.5)
+cluster_ids <- sample(clusters, size = (size^2)/4, replace = TRUE)
+cluster_centers <- coords[sample(100, size = clusters),]
+
+place_parasite <- function(cluster_id, cluster_centers, cluster_size){
+  
+}
+
+clustered_fill <- function(cluster_centers, parasites){
+  
+}
+
+###
+
+
+
+
 
 ### Loop through subsets of a matrix, fill parasites in those subsets
 
 
+
+### This code from:
+## https://stackoverflow.com/questions/59734686/select-non-overlapping-submatrices-by-index-in-a-data-frame
 x <- matrix(1:144, 12, 12)
-nbyn <- 2
+
+nbyn <- 3
 groups <- (slice.index(x, 1) - 1) %/% nbyn * nrow(x) / nbyn + (slice.index(x, 2) + nbyn - 1) %/% nbyn
-rando_groups <- sample(unique(c(groups)), 18)
+rando_groups <- sample(unique(c(groups)), 1)
 
 which(groups %in% rando_groups)  #Gives you the indices
 x[groups %in% rando_groups]      #Gives you the values
 groups[groups %in% rando_groups] #Gives you the group
 groups %in% rando_groups         #Gives you a matrix of the selected regions
+
+###
 
 landscape_1d <- rep(0, 100)
 
@@ -30,11 +114,11 @@ landscape_1d[parasite_locs] <- 1
 landscape_2d <- matrix(landscape_1d, nrow = 10, ncol = 10)
 landscape_2d
 
-landscape <- matrix(0, nrow = 10, ncol = 10)
-coords <- matrix(c(rep(1:10, 10), rep(1:10, each = 10)), nrow = 100, ncol = 2)
-parasite_coords <- coords[sample(100, size = 40),] 
-landscape[parasite_coords] <- 1
-landscape
+
+landscape <- matrix(0, nrow = 12, ncol = 12)
+rbind(rep(1:6, each = 2), rep(1:6, each = 2))
+
+12 / 2 
 
 dead_zones <- sample(100, size = 10)
 
