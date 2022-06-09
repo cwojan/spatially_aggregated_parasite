@@ -84,6 +84,7 @@ clustered_fill <- function(cluster_centers, parasites){
 
 ### This code from:
 ## https://stackoverflow.com/questions/59734686/select-non-overlapping-submatrices-by-index-in-a-data-frame
+## (neglected to cite on commit f715c12116a378a73ef2e873936da81acd888eec)
 x <- matrix(1:144, 12, 12)
 
 nbyn <- 3
@@ -95,7 +96,7 @@ x[groups %in% rando_groups]      #Gives you the values
 groups[groups %in% rando_groups] #Gives you the group
 groups %in% rando_groups         #Gives you a matrix of the selected regions
 
-###
+### end stack overflow code
 
 landscape_1d <- rep(0, 100)
 
