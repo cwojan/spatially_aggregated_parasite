@@ -10,27 +10,173 @@
 library(purrr)
 library(landscapeR)
 library(raster)
+library(tidyverse)
 
 ### while loop clustering
 
-c_factor <- 6
-size <- 12
+generate_landscape <- function(size, c_factor, potential_prop){
+  potential <- (size^2) * potential_prop
+  landscape <- matrix(0, nrow = size, ncol = size)
+  coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), 
+                   nrow = size^2, ncol = 2)
+  
+  c_size <- size - (c_factor - 1)
+  start_coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                         nrow = c_size^2, ncol = 2)
+  
+  rownames(coords) <- str_c("cell", coords[,1], coords[,2], sep = "_")
+  rownames(start_coords) <- str_c("cell", start_coords[,1], start_coords[,2], sep = "_")
+  
+  counter <- 0
+  
+  while(sum(landscape) < potential){
+    start <- start_coords[sample(nrow(start_coords), size = 1),]
+    block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                      rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                    nrow = c_factor^2, ncol = 2)
+    rownames(block) <- str_c("cell", block[,1], block[,2], sep = "_")
+    if(all(rownames(block) %in% rownames(coords))){
+      alt_block <- matrix(block[order(block[,1]),], ncol = 2)
+      rownames(alt_block) <- str_c("cell", alt_block[,1], alt_block[,2], sep = "_")
+      block <- list(block, alt_block)[[sample(2,1)]]
+      iterator <- list(1:nrow(block), nrow(block):1)[[sample(2,1)]]
+      for(i in iterator){
+        landscape[matrix(block[i,], ncol = 2)] <- 1
+        if(sum(landscape) >= potential){
+          break
+        }
+      }
+      start_coords <- start_coords[!rownames(start_coords) %in% rownames(block),]
+      coords <- coords[!rownames(coords) %in% rownames(block),]
+    } else {
+      counter <- counter + 1
+    }
+    if(counter > 100){
+      coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), 
+                       nrow = size^2, ncol = 2)
+      start_coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                             nrow = c_size^2, ncol = 2)
+      rownames(coords) <- str_c("cell", coords[,1], coords[,2], sep = "_")
+      rownames(start_coords) <- str_c("cell", start_coords[,1], start_coords[,2], sep = "_")
+      counter <- 0
+      landscape[] <- 0
+    }
+  }
+  
+  return(landscape)
+}
+
+plot(raster(generate_landscape(24, 9, 0.75)))
+
+576 * 0.1
+
+generate_landscape(24, 1, 0.5)
+
+generate_landscape(24, 12, 0.5)
+
+
+
+c_factor <- 4
+size <- 24
 potential <- (size^2) * 0.25
+landscape <- matrix(0, nrow = size, ncol = size)
+c_size <- size - (c_factor - 1)
+
+coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), 
+                 nrow = size^2, ncol = 2)
+start_coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                       nrow = c_size^2, ncol = 2)
+
+rownames(coords) <- str_c("cell", coords[,1], coords[,2], sep = "_")
+rownames(start_coords) <- str_c("cell", start_coords[,1], start_coords[,2], sep = "_")
+
+counter <- 0
+
+while(sum(landscape) < potential){
+  start <- start_coords[sample(nrow(start_coords), size = 1),]
+  block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                    rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                  nrow = c_factor^2, ncol = 2)
+  rownames(block) <- str_c("cell", block[,1], block[,2], sep = "_")
+  if(all(rownames(block) %in% rownames(coords))){
+    alt_block <- matrix(block[order(block[,1]),], ncol = 2)
+    rownames(alt_block) <- str_c("cell", alt_block[,1], alt_block[,2], sep = "_")
+    block <- list(block, alt_block)[[sample(2,1)]]
+    iterator <- list(1:nrow(block), nrow(block):1)[[sample(2,1)]]
+    for(i in iterator){
+      landscape[matrix(block[i,], ncol = 2)] <- 1
+      if(sum(landscape) >= potential){
+        break
+      }
+    }
+    start_coords <- start_coords[!rownames(start_coords) %in% rownames(block),]
+    coords <- coords[!rownames(coords) %in% rownames(block),]
+  } else {
+    counter <- counter + 1
+  }
+  if(counter > 100){
+    coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), 
+                     nrow = size^2, ncol = 2)
+    start_coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                           nrow = c_size^2, ncol = 2)
+    rownames(coords) <- str_c("cell", coords[,1], coords[,2], sep = "_")
+    rownames(start_coords) <- str_c("cell", start_coords[,1], start_coords[,2], sep = "_")
+    counter <- 0
+    landscape[] <- 0
+  }
+}
+plot(raster(landscape))
+
+sum(landscape)
+
+block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                  rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                nrow = c_factor^2, ncol = 2)
+
+alt_block <- matrix(block[order(block[,1]),], ncol = 2)
+
+start_coords[sample(nrow(start_coords), size = 1),]
+
+start_coords[!rownames(start_coords) %in% rownames(block),]
+
+
+
+
+
+any(c(1,2,3) %in% c(3,4,5))
+
+m1 <- matrix(c(2,3,2,2,4,4), ncol = 2)
+m2 <- matrix(c(2,4,2,1,5,5), ncol = 2)
+
+paste0(m1[,1], m1[,2])
+paste0(m2[,1], m2[,2])
+
+any(paste0(m1[,1], m1[,2]) %in% paste0(m2[,1], m2[,2]))
+
+
+
+
+size <- 24
+c_factor <- 6
+prop <- 0.25
+
 landscape <- matrix(0, nrow = size, ncol = size)
 
 c_size <- size - (c_factor - 1)
 coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
                  nrow = c_size^2, ncol = 2)
 
-
-
+potential <- (size^2) * prop
 
 while(sum(landscape) < potential){
   start <- coords[sample(c_size^2, size = 1),]
   block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
                     rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
                   nrow = c_factor^2, ncol = 2)
-  for(i in 1:nrow(block)){
+  alt_block <- block[order(block[,1]),]
+  block <- list(block, alt_block)[[sample(2,1)]]
+  iterator <- list(1:nrow(block), nrow(block):1)[[sample(2,1)]]
+  for(i in iterator){
     landscape[matrix(block[i,], ncol = 2)] <- 1
     if(sum(landscape) > potential){
       break
@@ -38,7 +184,45 @@ while(sum(landscape) < potential){
   }
 }
 
+
+alt_block <- block[order(block[,1]),]
 plot(raster(landscape))
+
+
+generate_landscape <- function(size, c_factor, prop){
+  landscape <- matrix(0, nrow = size, ncol = size)
+  
+  c_size <- size - (c_factor - 1)
+  coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                   nrow = c_size^2, ncol = 2)
+  
+  potential <- (size^2) * prop
+  
+  while(sum(landscape) < potential){
+    start <- coords[sample(c_size^2, size = 1),]
+    block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                      rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                    nrow = c_factor^2, ncol = 2)
+    alt_block <- block[order(block[,1]),]
+    block <- list(block, alt_block)[[sample(2,1)]]
+    iterator <- list(1:nrow(block), nrow(block):1)[[sample(2,1)]]
+    for(i in iterator){
+      landscape[matrix(block[i,], ncol = 2)] <- 1
+      if(sum(landscape) == potential){
+        break
+      }
+    }
+  }
+  
+  return(landscape)
+}
+
+plot(raster(generate_landscape(24, 7, 0.25)))
+
+
+seq_along(36)
+
+rnorm(1)
 
 generate_landscape <- function(size, c_factor, prop){
   landscape <- matrix(0, nrow = size, ncol = size)
@@ -66,11 +250,29 @@ generate_landscape <- function(size, c_factor, prop){
   return(landscape)
 }
 
-plot(raster(generate_landscape(12, 6, (1/3))))
-
-144 * 0.25
-
-48 / 144
+### Recursion idea...
+while(sum(landscape) < potential){
+  start <- coords[sample(nrow(coords), size = 1),]
+  block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                    rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                  nrow = c_factor^2, ncol = 2)
+  fill <- sum(landscape)
+  while(fill + nrow(block) > potential){
+    sub_size <- c_factor
+    c_factor <- c_factor - 1
+    sub_landscape <- generate_landscape(size = sub_size, 
+                                        c_factor = c_factor, 
+                                        potential = potential - fill)
+    block
+  }
+  for(i in 1:nrow(block)){
+    landscape[matrix(block[i,], ncol = 2)] <- 1
+    if(sum(landscape) == potential){
+      break
+    }
+  }
+}
+####
 
 
 
