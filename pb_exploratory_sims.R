@@ -1,5 +1,5 @@
 ####
-## project: parasite_burden_modeling
+## project: spatially_decoupled_parasite
 ## file: pb_exploratory_sims.R
 ## function: explore simulating environmental parasite transmission in different ways
 ## author: chris wojan

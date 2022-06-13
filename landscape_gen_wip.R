@@ -1,3 +1,12 @@
+####
+## project: spatially_decoupled_parasite
+## file: landscape_gen_wip.R
+## function: scratch code brainstorming how to generate parasite landscapes
+## author: chris wojan
+####
+
+
+
 library(purrr)
 library(landscapeR)
 library(raster)
