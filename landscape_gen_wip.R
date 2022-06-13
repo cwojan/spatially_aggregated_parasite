@@ -11,6 +11,69 @@ library(purrr)
 library(landscapeR)
 library(raster)
 
+### while loop clustering
+
+c_factor <- 6
+size <- 12
+potential <- (size^2) * 0.25
+landscape <- matrix(0, nrow = size, ncol = size)
+
+c_size <- size - (c_factor - 1)
+coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                 nrow = c_size^2, ncol = 2)
+
+
+
+
+while(sum(landscape) < potential){
+  start <- coords[sample(c_size^2, size = 1),]
+  block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                    rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                  nrow = c_factor^2, ncol = 2)
+  for(i in 1:nrow(block)){
+    landscape[matrix(block[i,], ncol = 2)] <- 1
+    if(sum(landscape) > potential){
+      break
+    }
+  }
+}
+
+plot(raster(landscape))
+
+generate_landscape <- function(size, c_factor, prop){
+  landscape <- matrix(0, nrow = size, ncol = size)
+  
+  c_size <- size - (c_factor - 1)
+  coords <- matrix(c(rep(1:c_size, c_size), rep(1:c_size, each = c_size)), 
+                   nrow = c_size^2, ncol = 2)
+  
+  potential <- (size^2) * prop
+  
+  while(sum(landscape) < potential){
+    start <- coords[sample(c_size^2, size = 1),]
+    block <- matrix(c(rep(start[1]:(start[1] + (c_factor - 1)), c_factor),
+                      rep(start[2]:(start[2] + (c_factor - 1)), each = c_factor)),
+                    nrow = c_factor^2, ncol = 2)
+    iterator <- sample(nrow(block), size = c_factor^2)
+    for(i in iterator){
+      landscape[matrix(block[i,], ncol = 2)] <- 1
+      if(sum(landscape) > potential){
+        break
+      }
+    }
+  }
+  
+  return(landscape)
+}
+
+plot(raster(generate_landscape(12, 6, (1/3))))
+
+144 * 0.25
+
+48 / 144
+
+
+
 #### free clustering
 c_factor <- 6
 size <- 12
