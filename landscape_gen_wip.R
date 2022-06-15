@@ -14,7 +14,7 @@ library(tidyverse)
 
 ### while loop clustering
 
-generate_landscape <- function(size, c_factor, potential_prop){
+generate_landscape <- function(size = 24, c_factor = 1, potential_prop = 0.25){
   potential <- (size^2) * potential_prop
   landscape <- matrix(0, nrow = size, ncol = size)
   coords <- matrix(c(rep(1:size, size), rep(1:size, each = size)), 
@@ -66,9 +66,16 @@ generate_landscape <- function(size, c_factor, potential_prop){
   return(landscape)
 }
 
-plot(raster(generate_landscape(24, 9, 0.75)))
+plot(raster(generate_landscape(24, 1, 0.25)))
 
-576 * 0.1
+walk(c(1,2,3,4,6,12), function(x){
+  plot(raster(generate_landscape(c_factor = x, potential_prop = 0.25)))})
+
+walk(c(1,2,3,4,6,12), function(x){
+  plot(raster(generate_landscape(c_factor = x, potential_prop = 0.5)))})
+
+
+144 / 2
 
 generate_landscape(24, 1, 0.5)
 
