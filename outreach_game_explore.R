@@ -10,6 +10,18 @@ library(shiny)
 library(tidyverse)
 library(ggplot2)
 
+generate_patch <- function(type){
+  patch <- tibble(type = type, rich = runif(1))
+}
+
+generate_deck <- function(size = 48){
+  type_count <- floor(size / 3)
+  forest_count <- type_count + (size %% 3)
+  types <- c(rep(c("grass", "savanna"), each = type_count),
+             rep("forest", forest_count)) 
+  deck <- map(types, generate_patch)
+}
+
 plot_revealed_patch <- function(patch){
   geom <- geom_tile(aes(x = patch$x, y = patch$y), alpha = patch$rich, 
                     color = "black", fill = "darkolivegreen4", size = 1)
@@ -28,12 +40,16 @@ move_mouse <- function(map_data, mouse_data, coord, boundary, direction){
       tick_seq <- 0
     }
     mouse_data$ticks <- tick_seq
-    if(!coord_label %in% unlist(map_data$patches)){
-      map_data$patches <- append(map_data$patches, 
+    if(!coord_label %in% unlist(map_data$revealed)){
+      new_patch_id <- sample(length(map_data$unrevealed), 1)
+      new_patch <- map_data$unrevealed[[new_patch_id]]
+      map_data$revealed <- append(map_data$revealed, 
                                  list(tibble(x = map_data$curr_coords[1],
                                              y = map_data$curr_coords[2],
-                                             rich = runif(1),
+                                             rich = new_patch$rich,
+                                             type = new_patch$type,
                                              coords = coord_label)))
+      map_data$unrevealed[[new_patch_id]] <- NULL
     }
   }
 }
@@ -67,10 +83,12 @@ ui <- fluidPage(
 server <- function(input, output) {
   map_data <- reactiveValues(
     curr_coords = c(0,0),
-    patches = list(tibble(x = 0, 
-                          y = 0, 
-                          rich = 1, 
-                          coords = str_c(x, "_", y)))
+    revealed = list(tibble(x = 0, 
+                           y = 0, 
+                           type = "forest",
+                           rich = 1, 
+                           coords = str_c(x, "_", y))),
+    unrevealed = generate_deck()
   )
   mouse_data <- reactiveValues(
     energy = c(1, 1.5),
@@ -95,7 +113,7 @@ server <- function(input, output) {
   })
   landscape <- reactive({
     landscape <- ggplot() +
-      map(map_data$patches, plot_revealed_patch) +
+      map(map_data$revealed, plot_revealed_patch) +
       geom_point(aes(x = map_data$curr_coords[1], y = map_data$curr_coords[2]), 
                  color = "tan4", size = 5) +
       coord_fixed(xlim = c(-4,4), ylim = c(-4,4)) +

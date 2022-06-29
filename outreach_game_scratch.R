@@ -1,3 +1,23 @@
+generate_patch <- function(type){
+  patch <- tibble(type = type, rich = runif(1))
+}
+
+generate_deck <- function(size = 48){
+  type_count <- floor(size / 3)
+  forest_count <- type_count + (size %% 3)
+  types <- c(rep(c("grass", "savanna"), each = type_count),
+             rep("forest", forest_count)) 
+  deck <- map(types, generate_patch)
+  return(deck)
+}
+
+deck <- generate_deck()
+
+patch_id <- sample(length(deck), 1)
+
+deck[[patch_id]]
+deck[[patch_id]] <- NULL
+
 energy <- seq(1,1.5,0.5)
 ticks <- 0
 
