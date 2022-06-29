@@ -10,56 +10,114 @@ library(shiny)
 library(tidyverse)
 library(ggplot2)
 
-patches <- tibble(id = 1:49,
-                  food = c(rbinom(15, 6, 0.75), rbinom(15, 6, 0.5), rbinom(19, 6, 0.25)), 
-                  ticks = c(rbinom(15, 5, 0.75), rbinom(15, 5, 0.5), rbinom(19, 5, 0.25)))
-
-curr_coords <- c(4,4)
-
-revealed <- list()
-revealed[[1]] <- tibble(x = curr_coords[1], y = curr_coords[2], text = "Start", rich = 1)
-revealed[[2]] <- tibble(x = 5, y = 4, text = "Food: 6\nTicks: 4", rich = 1)
-revealed[[3]] <- tibble(x = 5, y = 5, text = "Food: 3\nTicks: 1", rich = 0.5)
-
 plot_revealed_patch <- function(patch){
-  geom <- geom_tile(aes(x = patch$x, y = patch$y), alpha = patch$rich, color = "black", fill = "darkolivegreen4", size = 1)
+  geom <- geom_tile(aes(x = patch$x, y = patch$y), alpha = patch$rich, 
+                    color = "black", fill = "darkolivegreen4", size = 1)
   return(geom)
 }
 
-plot_revealed_text <- function(patch){
-  geom <- geom_text(aes(x = patch$x, y = patch$y + 0.2, label = patch$text))
-  return(geom)
-}
-
-landscape <- ggplot() +
-  geom_tile(aes(x = curr_coords[1], y = curr_coords[2]), color = "black", fill = "darkolivegreen4", size = 1) +
-  geom_text(aes(x = curr_coords[1], y = curr_coords[2] + 0.2), label = "Start") +
-  geom_point(aes(x = curr_coords[1], y = curr_coords[2] - 0.3), color = "tan4", size = 5) +
-  coord_fixed(xlim = c(0,8), ylim = c(0,8)) +
-  theme_void() +
-  theme(legend.position = "none")
-
-landscape
-
-landscape +
-  map(revealed, plot_revealed_patch) +
-  map(revealed, plot_revealed_text)
-
-landscape +
-  geom_tile(aes(x = 4, y = 4), color = "black", fill = "darkolivegreen4", size = 1) +
-  geom_text(aes(x = 4, y = 4.25), label = "Start") +
-  geom_tile(aes(x = 5, y = 4), color = "black", fill = "darkolivegreen4", size = 1) +
-  geom_text(aes(x = 5, y = 4.25), label = "Food: ") +
-  geom_point(aes(x = 5, y = 4), color = "tan4", size = 5) 
 
 ## Define ui
 ui <- fluidPage(
-  
+  titlePanel("Forests and Foragers"),
+  sidebarLayout(
+    sidebarPanel(
+      helpText("Move:"),
+      fluidRow(
+        actionButton(inputId = "up", label = "Up")
+      ),
+      fluidRow(
+        actionButton(inputId = "left", label = "Left"),
+        actionButton(inputId = "right", label = "Right")
+      ),
+      fluidRow(
+        actionButton(inputId = "down", label = "Down") 
+      )
+    ),
+    mainPanel(
+      plotOutput("map")
+    )
+  )
 )
 
 ## Define server
 server <- function(input, output) {
-  
+  map_data <- reactiveValues(
+    curr_coords = c(4,4),
+    patches = list(tibble(x = 4, 
+                          y = 4, 
+                          rich = 1, 
+                          coords = str_c(x, "_", y)))
+  )
+  observeEvent(input$up, {
+    if(map_data$curr_coords[2] < 7){
+      map_data$curr_coords[2] <- map_data$curr_coords[2] + 1
+      coord_label <- str_c(map_data$curr_coords[1], "_", 
+                           map_data$curr_coords[2])
+      if(!coord_label %in% unlist(map_data$patches)){
+        map_data$patches <- append(map_data$patches, 
+                                   list(tibble(x = map_data$curr_coords[1],
+                                               y = map_data$curr_coords[2],
+                                               rich = runif(1),
+                                               coords = coord_label)))
+      }
+    }
+  })
+  observeEvent(input$left, {
+    if(map_data$curr_coords[1] > 1){
+      map_data$curr_coords[1] <- map_data$curr_coords[1] - 1
+      coord_label <- str_c(map_data$curr_coords[1], "_", 
+                           map_data$curr_coords[2])
+      if(!coord_label %in% unlist(map_data$patches)){
+        map_data$patches <- append(map_data$patches, 
+                                   list(tibble(x = map_data$curr_coords[1],
+                                               y = map_data$curr_coords[2],
+                                               rich = runif(1),
+                                               coords = coord_label)))
+      }
+    }
+  })
+  observeEvent(input$right, {
+    if(map_data$curr_coords[1] < 7){
+      map_data$curr_coords[1] <- map_data$curr_coords[1] + 1
+      coord_label <- str_c(map_data$curr_coords[1], "_", 
+                           map_data$curr_coords[2])
+      if(!coord_label %in% unlist(map_data$patches)){
+        map_data$patches <- append(map_data$patches, 
+                                   list(tibble(x = map_data$curr_coords[1],
+                                               y = map_data$curr_coords[2],
+                                               rich = runif(1),
+                                               coords = coord_label)))
+      }
+    }
+  })
+  observeEvent(input$down, {
+    if(map_data$curr_coords[2] > 1){
+      map_data$curr_coords[2] <- map_data$curr_coords[2] - 1
+      coord_label <- str_c(map_data$curr_coords[1], "_", 
+                           map_data$curr_coords[2])
+      if(!coord_label %in% unlist(map_data$patches)){
+        map_data$patches <- append(map_data$patches, 
+                                   list(tibble(x = map_data$curr_coords[1],
+                                               y = map_data$curr_coords[2],
+                                               rich = runif(1),
+                                               coords = coord_label)))
+      }
+    }
+  })
+  landscape <- reactive({
+    landscape <- ggplot() +
+      map(map_data$patches, plot_revealed_patch) +
+      geom_point(aes(x = map_data$curr_coords[1], y = map_data$curr_coords[2]), 
+                 color = "tan4", size = 5) +
+      coord_fixed(xlim = c(0,8), ylim = c(0,8)) +
+      theme_void() +
+      theme(legend.position = "none")
+    return(landscape)
+  })
+  output$map <- renderPlot({
+    landscape()
+  })
 }
 
 ## Run app
