@@ -1,3 +1,40 @@
+energy <- seq(1,1.5,0.5)
+ticks <- 0
+
+new_tick_max <- max(0.8, ticks) + (rbinom(1,4,0.2))/5
+tick_seq <- if_else(new_tick_max >= 1, 
+                   seq(1, new_tick_max, by = 0.2),
+                   0)
+seq(1, new_tick_max, by = 0.2)
+
+tick_seq
+ticks <- tick_seq
+
+(rbinom(1,4,0.2))/5
+
+ifelse(new_tick_max >= 1, 
+       seq(1, new_tick_max, 0.2),
+       0)
+
+new_ticks <- max(0.9, ticks) + (rbinom(1,4,0.2))/5
+ticks <- c(ticks, new_ticks)
+
+max(0.9, ticks)
+ggplot() +
+  geom_point(aes(x = energy, y = "Energy"), size = 10, color = "red") +
+  geom_point(aes(x = c(0,ticks), y = "Ticks Fed"), size = 2) +
+  coord_fixed(xlim = c(1,9)) +
+  scale_y_discrete(limits = c("Ticks Fed", "Energy")) +
+  theme_bw() +
+  theme(legend.position = "none",
+        axis.title = element_blank(),
+        axis.text.x = element_blank(),
+        panel.grid = element_blank(),
+        axis.ticks.x = element_blank())
+
+
+
+
 
 patches <- tibble(id = 1:49,
                   food = c(rbinom(15, 6, 0.75), rbinom(15, 6, 0.5), rbinom(19, 6, 0.25)), 
