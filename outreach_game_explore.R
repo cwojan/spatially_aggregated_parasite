@@ -11,7 +11,11 @@ library(tidyverse)
 library(ggplot2)
 
 generate_patch <- function(type){
-  patch <- tibble(type = type, rich = runif(1))
+  patch <- tibble(type = type, rich = runif(1)) %>%
+    mutate(
+      type = factor(type, levels = c("grass","savanna","forest")),
+      ticks = as.numeric(type) / 5
+    )
 }
 
 generate_deck <- function(size = 48){
@@ -23,8 +27,8 @@ generate_deck <- function(size = 48){
 }
 
 plot_revealed_patch <- function(patch){
-  geom <- geom_tile(aes(x = patch$x, y = patch$y), alpha = patch$rich, 
-                    color = "black", fill = "darkolivegreen4", size = 1)
+  geom <- geom_tile(aes(x = patch$x, y = patch$y, fill = patch$type), alpha = patch$rich, 
+                    color = "black", size = 1)
   return(geom)
 }
 
@@ -33,24 +37,29 @@ move_mouse <- function(map_data, mouse_data, coord, boundary, direction){
     map_data$curr_coords[coord] <- map_data$curr_coords[coord] + direction
     coord_label <- str_c(map_data$curr_coords[1], "_", 
                          map_data$curr_coords[2])
-    new_tick_max <- max(0.8, mouse_data$ticks) + (rbinom(1,4,0.2))/5
+    if(!coord_label %in% unlist(map_data$revealed)){
+      new_patch_id <- sample(length(map_data$unrevealed), 1)
+      new_patch <- map_data$unrevealed[[new_patch_id]]
+      map_data$revealed <- append(map_data$revealed, 
+                                  list(tibble(x = map_data$curr_coords[1],
+                                              y = map_data$curr_coords[2],
+                                              rich = new_patch$rich,
+                                              type = new_patch$type,
+                                              ticks = new_patch$ticks,
+                                              coords = coord_label)))
+      map_data$unrevealed[[new_patch_id]] <- NULL
+    }
+    revealed_data <- bind_rows(map_data$revealed)
+    prob <- revealed_data %>%
+      filter(coords == coord_label) %>%
+      pull(ticks)
+    new_tick_max <- max(0.8, mouse_data$ticks) + (rbinom(1, 3, prob)) / 5
     if(new_tick_max >= 1){
       tick_seq <- seq(1, new_tick_max, by = 0.2)
     } else {
       tick_seq <- 0
     }
     mouse_data$ticks <- tick_seq
-    if(!coord_label %in% unlist(map_data$revealed)){
-      new_patch_id <- sample(length(map_data$unrevealed), 1)
-      new_patch <- map_data$unrevealed[[new_patch_id]]
-      map_data$revealed <- append(map_data$revealed, 
-                                 list(tibble(x = map_data$curr_coords[1],
-                                             y = map_data$curr_coords[2],
-                                             rich = new_patch$rich,
-                                             type = new_patch$type,
-                                             coords = coord_label)))
-      map_data$unrevealed[[new_patch_id]] <- NULL
-    }
   }
 }
 
@@ -84,9 +93,10 @@ server <- function(input, output) {
   map_data <- reactiveValues(
     curr_coords = c(0,0),
     revealed = list(tibble(x = 0, 
-                           y = 0, 
-                           type = "forest",
+                           y = 0,
                            rich = 1, 
+                           type = factor("forest", levels = c("grass", "savanna", "forest")),
+                           ticks = 0.6,
                            coords = str_c(x, "_", y))),
     unrevealed = generate_deck()
   )
@@ -117,8 +127,9 @@ server <- function(input, output) {
       geom_point(aes(x = map_data$curr_coords[1], y = map_data$curr_coords[2]), 
                  color = "tan4", size = 5) +
       coord_fixed(xlim = c(-4,4), ylim = c(-4,4)) +
-      theme_void() +
-      theme(legend.position = "none")
+      scale_fill_manual(values = c("chartreuse", "goldenrod", "darkgreen"),
+                        drop = FALSE) +
+      theme_void()
     return(landscape)
   })
   mouse <- reactive({

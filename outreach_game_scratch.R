@@ -1,5 +1,9 @@
 generate_patch <- function(type){
-  patch <- tibble(type = type, rich = runif(1))
+  patch <- tibble(type = type, rich = runif(1)) %>%
+    mutate(
+      type = factor(type, levels = c("grass","savanna","forest")),
+      ticks = as.numeric(type) / 5
+    )
 }
 
 generate_deck <- function(size = 48){
@@ -12,6 +16,8 @@ generate_deck <- function(size = 48){
 }
 
 deck <- generate_deck()
+
+deck_Dat <- bind_rows(deck)
 
 patch_id <- sample(length(deck), 1)
 
@@ -67,7 +73,12 @@ revealed[[1]] <- tibble(x = curr_coords[1], y = curr_coords[2], text = "Start", 
 revealed[[2]] <- tibble(x = 5, y = 4, text = "Food: 6\nTicks: 4", rich = 1)
 revealed[[3]] <- tibble(x = 5, y = 5, text = "Food: 3\nTicks: 1", rich = 0.5)
 
+revealed <- list(tibble(x = curr_coords[1], y = curr_coords[2], text = "Start", rich = 1))
+revealed <- append(revealed, list(tibble(x = 5, y = 4, text = "Food: 6\nTicks: 4", rich = 1)))
 
+
+
+bind_rows(revealed)
 
 revealed <- list(tibble(x = curr_coords[1], y = curr_coords[2], rich = 1))
 revealed <- append(revealed, list(tibble(x = 5, y = 4, rich = 1, coords = str_c(5,"_",4))))
