@@ -11,7 +11,7 @@ library(tidyverse)
 library(ggplot2)
 
 generate_patch <- function(type){
-  patch <- tibble(type = type, rich = runif(1)) %>%
+  patch <- tibble(type = type, rich = sample(1:6, 1)) %>%
     mutate(
       type = factor(type, levels = c("grass","savanna","forest")),
       ticks = as.numeric(type) / 5
@@ -27,9 +27,21 @@ generate_deck <- function(size = 48){
 }
 
 plot_revealed_patch <- function(patch){
-  geom <- geom_tile(aes(x = patch$x, y = patch$y, fill = patch$type), alpha = patch$rich, 
-                    color = "black", size = 1)
+  geom <- geom_tile(aes(x = patch$x, y = patch$y, fill = patch$type), 
+                    color = "black", alpha = 0.7, size = 1)
   return(geom)
+}
+
+plot_revealed_food <- function(patch){
+  if(patch$rich == 0){
+    food_x <- 1
+    food_size = 0
+  }else{
+    food_x <- seq(from = patch$x - 0.35, to = (patch$x - 0.35) + (patch$rich - 1) * 0.15, 
+                  by = 0.15)
+    food_size = 3
+  }
+  geom <- geom_point(aes(x = food_x, y = patch$y + 0.25), color = "red", size = food_size)
 }
 
 move_mouse <- function(map_data, mouse_data, coord, boundary, direction){
@@ -40,13 +52,14 @@ move_mouse <- function(map_data, mouse_data, coord, boundary, direction){
     if(!coord_label %in% unlist(map_data$revealed)){
       new_patch_id <- sample(length(map_data$unrevealed), 1)
       new_patch <- map_data$unrevealed[[new_patch_id]]
-      map_data$revealed <- append(map_data$revealed, 
-                                  list(tibble(x = map_data$curr_coords[1],
-                                              y = map_data$curr_coords[2],
-                                              rich = new_patch$rich,
-                                              type = new_patch$type,
-                                              ticks = new_patch$ticks,
-                                              coords = coord_label)))
+      new_patch_list <- list(tibble(x = map_data$curr_coords[1],
+                                         y = map_data$curr_coords[2],
+                                         rich = new_patch$rich,
+                                         type = new_patch$type,
+                                         ticks = new_patch$ticks,
+                                         coords = coord_label))
+      names(new_patch_list) <- coord_label
+      map_data$revealed <- append(map_data$revealed, new_patch_list)
       map_data$unrevealed[[new_patch_id]] <- NULL
     }
     revealed_data <- bind_rows(map_data$revealed)
@@ -79,6 +92,10 @@ ui <- fluidPage(
       ),
       fluidRow(
         actionButton(inputId = "down", label = "Down") 
+      ),
+      helpText("Action:"),
+      fluidRow(
+        actionButton(inputId = "forage", label = "Forage")
       )
     ),
     mainPanel(
@@ -92,12 +109,13 @@ ui <- fluidPage(
 server <- function(input, output) {
   map_data <- reactiveValues(
     curr_coords = c(0,0),
-    revealed = list(tibble(x = 0, 
-                           y = 0,
-                           rich = 1, 
-                           type = factor("forest", levels = c("grass", "savanna", "forest")),
-                           ticks = 0.6,
-                           coords = str_c(x, "_", y))),
+    revealed = list("0_0" = tibble(x = 0, 
+                                   y = 0,
+                                   rich = 1, 
+                                   type = factor("forest", 
+                                                 levels = c("grass", "savanna", "forest")),
+                                   ticks = 0.6,
+                                   coords = str_c(x, "_", y))),
     unrevealed = generate_deck()
   )
   mouse_data <- reactiveValues(
@@ -121,15 +139,28 @@ server <- function(input, output) {
     move_mouse(map_data = map_data, mouse_data = mouse_data,
                coord = 2, boundary = 4, direction = -1)
   })
+  
+  observeEvent(input$forage, {
+    coord_label <- str_c(map_data$curr_coords[1], "_", 
+                         map_data$curr_coords[2])
+    food_avail <- map_data$revealed[[coord_label]]$rich
+    forage <- sample(1:6, 1)
+    food_remain <- ifelse(forage > food_avail, food_avail, food_avail - forage)
+    map_data$revealed[[coord_label]][1,"rich"] <- food_remain
+    
+  })
+  
   landscape <- reactive({
     landscape <- ggplot() +
-      map(map_data$revealed, plot_revealed_patch) +
-      geom_point(aes(x = map_data$curr_coords[1], y = map_data$curr_coords[2]), 
-                 color = "tan4", size = 5) +
-      coord_fixed(xlim = c(-4,4), ylim = c(-4,4)) +
+      map(unname(map_data$revealed), plot_revealed_patch) +
+      map(unname(map_data$revealed), plot_revealed_food) +
+      geom_point(aes(x = map_data$curr_coords[1], y = map_data$curr_coords[2] - 0.25), 
+                 color = "black", fill = "tan4", size = 5, shape = 24) +
+      coord_fixed(xlim = c(-4,4), ylim = c(-4,4), expand = FALSE) +
       scale_fill_manual(values = c("chartreuse", "goldenrod", "darkgreen"),
                         drop = FALSE) +
-      theme_void()
+      theme_void() +
+      theme(panel.border = element_rect(color = "black", size = 1, fill = NA))
     return(landscape)
   })
   mouse <- reactive({

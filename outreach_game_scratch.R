@@ -1,5 +1,5 @@
 generate_patch <- function(type){
-  patch <- tibble(type = type, rich = runif(1)) %>%
+  patch <- tibble(type = type, rich = sample(1:6, 1)) %>%
     mutate(
       type = factor(type, levels = c("grass","savanna","forest")),
       ticks = as.numeric(type) / 5
@@ -15,7 +15,44 @@ generate_deck <- function(size = 48){
   return(deck)
 }
 
+coord_label <- "0_1"
+
+map_data <- list(
+  curr_coords = c(0,0),
+  revealed = list("0_0" = tibble(x = 0, 
+                                 y = 0,
+                                 rich = 1, 
+                                 type = factor("forest", levels = c("grass", "savanna", "forest")),
+                                 ticks = 0.6,
+                                 coords = str_c(x, "_", y))),
+  unrevealed = generate_deck()
+)
+
+
+map_data$revealed[[coord_label]] <- tibble(x = 0, 
+                                         y = 0,
+                                         rich = 1, 
+                                         type = factor("forest", levels = c("grass", "savanna", "forest")),
+                                         ticks = 0.6,
+                                         coords = str_c(x, "_", y))
+
+map_data$revealed[[coord_label]]$rich
+
+2 > map_data$revealed[[coord_label]][1,"rich"]
+
+unname(map_data$revealed)
+
+coord_label <- "0_0"
+
+map_data$revealed[map_data$revealed$coords == coord_label, "rich"] 
+
+map_data["revealed"]
+
 deck <- generate_deck()
+
+testlist <- list(name = tibble(x = 1, y = 2), second = tibble(x = 4, y = 3))
+
+testlist$name$x
 
 deck_Dat <- bind_rows(deck)
 
