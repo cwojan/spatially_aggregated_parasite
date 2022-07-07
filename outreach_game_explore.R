@@ -45,34 +45,51 @@ plot_revealed_food <- function(patch){
 }
 
 move_mouse <- function(map_data, mouse_data, coord, boundary, direction){
-  if(abs(map_data$curr_coords[coord] + direction) < boundary){
-    map_data$curr_coords[coord] <- map_data$curr_coords[coord] + direction
-    coord_label <- str_c(map_data$curr_coords[1], "_", 
-                         map_data$curr_coords[2])
-    if(!coord_label %in% unlist(map_data$revealed)){
-      new_patch_id <- sample(length(map_data$unrevealed), 1)
-      new_patch <- map_data$unrevealed[[new_patch_id]]
-      new_patch_list <- list(tibble(x = map_data$curr_coords[1],
-                                         y = map_data$curr_coords[2],
-                                         rich = new_patch$rich,
-                                         type = new_patch$type,
-                                         ticks = new_patch$ticks,
-                                         coords = coord_label))
-      names(new_patch_list) <- coord_label
-      map_data$revealed <- append(map_data$revealed, new_patch_list)
-      map_data$unrevealed[[new_patch_id]] <- NULL
+  if(mouse_data$turns > 0){
+    if(abs(map_data$curr_coords[coord] + direction) < boundary){
+      map_data$curr_coords[coord] <- map_data$curr_coords[coord] + direction
+      coord_label <- str_c(map_data$curr_coords[1], "_", 
+                           map_data$curr_coords[2])
+      if(!coord_label %in% unlist(map_data$revealed)){
+        new_patch_id <- sample(length(map_data$unrevealed), 1)
+        new_patch <- map_data$unrevealed[[new_patch_id]]
+        new_patch_list <- list(tibble(x = map_data$curr_coords[1],
+                                      y = map_data$curr_coords[2],
+                                      rich = new_patch$rich,
+                                      type = new_patch$type,
+                                      ticks = new_patch$ticks,
+                                      coords = coord_label))
+        names(new_patch_list) <- coord_label
+        map_data$revealed <- append(map_data$revealed, new_patch_list)
+        map_data$unrevealed[[new_patch_id]] <- NULL
+      }
+      revealed_data <- bind_rows(map_data$revealed)
+      mouse_data$patch_ticks <- revealed_data %>%
+        filter(coords == coord_label) %>%
+        pull(ticks)
+      mouse_data$tick_roll <- sample(1:6, 1)
+      mouse_data$new_ticks <- ifelse(mouse_data$tick_roll > mouse_data$patch_ticks,
+                                     0, mouse_data$tick_roll)
+      mouse_data$ticks <- mouse_data$ticks + mouse_data$new_ticks
+      mouse_data$turns <- mouse_data$turns - 1
     }
-    revealed_data <- bind_rows(map_data$revealed)
-    mouse_data$patch_ticks <- revealed_data %>%
-      filter(coords == coord_label) %>%
-      pull(ticks)
-    mouse_data$tick_roll <- sample(1:6, 1)
-    mouse_data$new_ticks <- ifelse(mouse_data$tick_roll > mouse_data$patch_ticks,
-                                   0, mouse_data$tick_roll)
-    mouse_data$ticks <- mouse_data$ticks + mouse_data$new_ticks
-    mouse_data$turns <- mouse_data$turns + 1
   }
 }
+
+map_setup <- function(){
+  map_data <- reactiveValues(
+    curr_coords = c(0,0),
+    revealed = list("0_0" = tibble(x = 0, 
+                                   y = 0,
+                                   rich = 1, 
+                                   type = factor("forest", 
+                                                 levels = c("grass", "savanna", "forest")),
+                                   ticks = 0.6,
+                                   coords = str_c(x, "_", y))),
+    unrevealed = generate_deck()
+  )
+  return(map_data)
+}  
 
 
 ## Define ui
@@ -95,6 +112,12 @@ ui <- fluidPage(
       h4("Do:"),
       fluidRow(
         actionButton(inputId = "forage", label = "Forage")
+      ),
+      h3("Start Over"),
+      fluidRow(
+        actionButton(inputId = "reset", label = "Reset"),
+        numericInput(inputId = "game_turns", label = "# of Turns for New Game",
+                     value = 10, min = 5, max = 50)
       )
     ),
     mainPanel(
@@ -112,17 +135,7 @@ ui <- fluidPage(
 
 ## Define server
 server <- function(input, output) {
-  map_data <- reactiveValues(
-    curr_coords = c(0,0),
-    revealed = list("0_0" = tibble(x = 0, 
-                                   y = 0,
-                                   rich = 1, 
-                                   type = factor("forest", 
-                                                 levels = c("grass", "savanna", "forest")),
-                                   ticks = 0.6,
-                                   coords = str_c(x, "_", y))),
-    unrevealed = generate_deck()
-  )
+  map_data <- map_setup()
   mouse_data <- reactiveValues(
     energy = 2,
     ticks = 0,
@@ -132,7 +145,7 @@ server <- function(input, output) {
     forage_roll = NA,
     forage = NA,
     patch_rich = NA,
-    turns = 0
+    turns = 10
   )
   
   observeEvent(input$up, {
@@ -153,16 +166,53 @@ server <- function(input, output) {
   })
   
   observeEvent(input$forage, {
-    coord_label <- str_c(map_data$curr_coords[1], "_", 
-                         map_data$curr_coords[2])
-    mouse_data$patch_rich <- map_data$revealed[[coord_label]]$rich
-    mouse_data$forage_roll <- sample(1:6, 1)
-    mouse_data$forage <- ifelse(mouse_data$forage_roll > mouse_data$patch_rich, 
-                          0, 
-                          mouse_data$forage_roll)
-    map_data$revealed[[coord_label]][1,"rich"] <- mouse_data$patch_rich - mouse_data$forage
-    mouse_data$energy <- mouse_data$energy + mouse_data$forage
-    mouse_data$turns <- mouse_data$turns + 1
+    if(mouse_data$turns > 0){
+      coord_label <- str_c(map_data$curr_coords[1], "_", 
+                           map_data$curr_coords[2])
+      mouse_data$patch_rich <- map_data$revealed[[coord_label]]$rich
+      mouse_data$forage_roll <- sample(1:6, 1)
+      mouse_data$forage <- ifelse(mouse_data$forage_roll > mouse_data$patch_rich, 
+                                  0, 
+                                  mouse_data$forage_roll)
+      map_data$revealed[[coord_label]][1,"rich"] <- mouse_data$patch_rich - mouse_data$forage
+      mouse_data$energy <- mouse_data$energy + mouse_data$forage
+      mouse_data$turns <- mouse_data$turns - 1
+    }
+  })
+  
+  observeEvent(input$reset, {
+    map_data$curr_coords <- c(0,0)
+    map_data$revealed <- list("0_0" = tibble(x = 0, 
+                                     y = 0,
+                                     rich = 1, 
+                                     type = factor("forest", 
+                                                   levels = c("grass", "savanna", "forest")),
+                                     ticks = 0.6,
+                                     coords = str_c(x, "_", y)))
+    map_data$unrevealed <- generate_deck()
+
+    mouse_data$energy <- 2
+    mouse_data$ticks <- 0
+    mouse_data$tick_roll <- NA
+    mouse_data$new_ticks <- NA
+    mouse_data$patch_ticks <- NA
+    mouse_data$forage_roll <- NA
+    mouse_data$forage <- NA
+    mouse_data$patch_rich <- NA
+    mouse_data$turns <- input$game_turns
+    
+    removeNotification(id = "game_over")
+  })
+  
+  observeEvent(mouse_data$turns, {
+    if(mouse_data$turns == 0){
+      results <- str_c("Game Over!\nScore: ",
+                       mouse_data$energy - (mouse_data$ticks)/2)
+      showNotification(ui = results,
+                       type = "message",
+                       duration = NULL,
+                       id = "game_over")
+    }
   })
   
   landscape <- reactive({
@@ -182,7 +232,7 @@ server <- function(input, output) {
     return(landscape)
   })
   mouse <- reactive({
-    tibble(Attribute = c("Total Energy", "Total Ticks Fed", "Total Turns Taken"),
+    tibble(Attribute = c("Total Energy", "Total Ticks Fed", "Total Turns Remaining"),
                Value = c(mouse_data$energy, mouse_data$ticks, mouse_data$turns))
   })
   latest <- reactive({
