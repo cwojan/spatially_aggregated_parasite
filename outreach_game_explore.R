@@ -14,7 +14,7 @@ generate_patch <- function(type){
   patch <- tibble(type = type, rich = sample(1:6, 1)) %>%
     mutate(
       type = factor(type, levels = c("grass","savanna","forest")),
-      ticks = as.numeric(type) / 5
+      ticks = as.numeric(type) * 2
     )
 }
 
@@ -63,16 +63,14 @@ move_mouse <- function(map_data, mouse_data, coord, boundary, direction){
       map_data$unrevealed[[new_patch_id]] <- NULL
     }
     revealed_data <- bind_rows(map_data$revealed)
-    prob <- revealed_data %>%
+    mouse_data$patch_ticks <- revealed_data %>%
       filter(coords == coord_label) %>%
       pull(ticks)
-    new_tick_max <- max(0.8, mouse_data$ticks) + (rbinom(1, 3, prob)) / 5
-    if(new_tick_max >= 1){
-      tick_seq <- seq(1, new_tick_max, by = 0.2)
-    } else {
-      tick_seq <- 0
-    }
-    mouse_data$ticks <- tick_seq
+    mouse_data$tick_roll <- sample(1:6, 1)
+    mouse_data$new_ticks <- ifelse(mouse_data$tick_roll > mouse_data$patch_ticks,
+                                   0, mouse_data$tick_roll)
+    mouse_data$ticks <- mouse_data$ticks + mouse_data$new_ticks
+    mouse_data$turns <- mouse_data$turns + 1
   }
 }
 
@@ -82,7 +80,8 @@ ui <- fluidPage(
   titlePanel("Forests and Foragers"),
   sidebarLayout(
     sidebarPanel(
-      helpText("Move:"),
+      h3("Actions"),
+      h4("Move:"),
       fluidRow(
         actionButton(inputId = "up", label = "Up")
       ),
@@ -93,14 +92,20 @@ ui <- fluidPage(
       fluidRow(
         actionButton(inputId = "down", label = "Down") 
       ),
-      helpText("Action:"),
+      h4("Do:"),
       fluidRow(
         actionButton(inputId = "forage", label = "Forage")
       )
     ),
     mainPanel(
+      h3("Landscape"),
       plotOutput("map"),
-      plotOutput("status")
+      column(6,
+             h4("Latest Status Update"),
+             tableOutput("update")),
+      column(6, 
+             h4("Current Status"),
+             tableOutput("status"))
     )
   )
 )
@@ -119,8 +124,15 @@ server <- function(input, output) {
     unrevealed = generate_deck()
   )
   mouse_data <- reactiveValues(
-    energy = c(1, 1.5),
-    ticks = 0
+    energy = 2,
+    ticks = 0,
+    tick_roll = NA,
+    new_ticks = NA,
+    patch_ticks = NA,
+    forage_roll = NA,
+    forage = NA,
+    patch_rich = NA,
+    turns = 0
   )
   
   observeEvent(input$up, {
@@ -143,11 +155,14 @@ server <- function(input, output) {
   observeEvent(input$forage, {
     coord_label <- str_c(map_data$curr_coords[1], "_", 
                          map_data$curr_coords[2])
-    food_avail <- map_data$revealed[[coord_label]]$rich
-    forage <- sample(1:6, 1)
-    food_remain <- ifelse(forage > food_avail, food_avail, food_avail - forage)
-    map_data$revealed[[coord_label]][1,"rich"] <- food_remain
-    
+    mouse_data$patch_rich <- map_data$revealed[[coord_label]]$rich
+    mouse_data$forage_roll <- sample(1:6, 1)
+    mouse_data$forage <- ifelse(mouse_data$forage_roll > mouse_data$patch_rich, 
+                          0, 
+                          mouse_data$forage_roll)
+    map_data$revealed[[coord_label]][1,"rich"] <- mouse_data$patch_rich - mouse_data$forage
+    mouse_data$energy <- mouse_data$energy + mouse_data$forage
+    mouse_data$turns <- mouse_data$turns + 1
   })
   
   landscape <- reactive({
@@ -158,30 +173,33 @@ server <- function(input, output) {
                  color = "black", fill = "tan4", size = 5, shape = 24) +
       coord_fixed(xlim = c(-4,4), ylim = c(-4,4), expand = FALSE) +
       scale_fill_manual(values = c("chartreuse", "goldenrod", "darkgreen"),
-                        drop = FALSE) +
+                        labels = c("Grass - Low Ticks",
+                                   "Savanna - Medium Ticks",
+                                   "Forest - High Ticks"),
+                        drop = FALSE, name = "Patch Type") +
       theme_void() +
       theme(panel.border = element_rect(color = "black", size = 1, fill = NA))
     return(landscape)
   })
   mouse <- reactive({
-    ggplot() +
-      geom_point(aes(x = mouse_data$energy, y = "Energy"), 
-                 size = 10, color = "red") +
-      geom_point(aes(x = c(0, mouse_data$ticks), y = "Ticks Fed"),
-                 size = 2) +
-      coord_fixed(xlim = c(1,8)) +
-      scale_y_discrete(limits = c("Ticks Fed", "Energy")) +
-      theme_bw() +
-      theme(legend.position = "none",
-            axis.title = element_blank(),
-            axis.text.x = element_blank(),
-            panel.grid = element_blank(),
-            axis.ticks.x = element_blank())
+    tibble(Attribute = c("Total Energy", "Total Ticks Fed", "Total Turns Taken"),
+               Value = c(mouse_data$energy, mouse_data$ticks, mouse_data$turns))
   })
+  latest <- reactive({
+    tibble(Action = c("Move", "Forage"),
+               Roll = c(mouse_data$tick_roll, mouse_data$forage_roll),
+               Patch = c(mouse_data$patch_ticks, mouse_data$patch_rich),
+               Result = c(str_c(as.character(mouse_data$new_ticks), " new ticks"),
+                          str_c(as.character(mouse_data$forage), " energy gained")))
+  })
+
   output$map <- renderPlot({
     landscape()
   })
-  output$status <- renderPlot({
+  output$update <- renderTable({
+    latest()
+  })
+  output$status <- renderTable({
     mouse()
   })
 }

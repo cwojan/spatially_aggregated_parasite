@@ -1,8 +1,20 @@
+
+
+latest <- reactive({
+  data.frame(Action = c("Move", "Forage"),
+             Roll = c(mouse_data$tick_roll, mouse_data$forage_roll),
+             Patch = c(mouse_data$patch_ticks, mouse_data$patch_rich),
+             Result = c(str_c(as.character(mouse_data$new_ticks), " new ticks"),
+                        str_c(as.character(mouse_data$forage), " energy gained")))
+})
+
+
+
 generate_patch <- function(type){
   patch <- tibble(type = type, rich = sample(1:6, 1)) %>%
     mutate(
       type = factor(type, levels = c("grass","savanna","forest")),
-      ticks = as.numeric(type) / 5
+      ticks = as.numeric(type) * 2
     )
 }
 
