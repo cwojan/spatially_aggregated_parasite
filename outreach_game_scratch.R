@@ -1,4 +1,86 @@
+library(shiny)
+library(tidyverse)
+library(ggplot2)
 
+generate_patch <- function(type){
+  patch <- tibble(type = type) %>%
+    mutate(
+      type = factor(type, levels = c("grass","savanna","forest")),
+      ticks = as.numeric(type) * 2,
+      min_rich = as.numeric(type),
+      max_rich = as.numeric(type) + 3,
+      rich = sample(min_rich:max_rich, 1),
+      remain = rich
+    )
+}
+
+generate_deck <- function(size = 49){
+  type_count <- floor(size / 3)
+  forest_count <- type_count + (size %% 3)
+  types <- c(rep(c("grass", "savanna"), each = type_count),
+             rep("forest", forest_count))
+  available_coords <- str_c(rep(-3:3, 7), rep(-3:3, each = 7), 
+                            sep = "_")
+  deck <- map_df(types, generate_patch) %>%
+    mutate(
+      coords = sample(available_coords, size = size)
+    ) %>%
+    separate(coords, into = c("x","y"), sep = "_", remove = FALSE, convert = TRUE)
+}
+
+plot_food_spaces <- function(patch){
+  food_x <- seq(from = patch$x - 0.35, to = (patch$x - 0.35) + (patch$rich - 1) * 0.15, 
+                by = 0.15)
+  geom <- geom_point(aes(x = food_x, y = patch$y + 0.25), 
+                     color = "black", shape = 1, size = 3.5)
+}
+
+plot_revealed_food <- function(patch){
+  if(patch$remain == 0){
+    food_x <- 1
+    food_size = 0
+  }else{
+    food_x <- seq(from = patch$x - 0.35, to = (patch$x - 0.35) + (patch$remain - 1) * 0.15, 
+                  by = 0.15)
+    food_size = 3
+  }
+  geom <- geom_point(aes(x = food_x, y = patch$y + 0.25), color = "red", size = food_size)
+}
+
+
+df <- generate_deck()
+
+map_data <- list(
+  curr_coords = c(0,0),
+  patches = generate_deck()
+)
+map_data$revealed <- list("0_0" = map_data$patches %>%
+  filter(coords == str_c(map_data$curr_coords[1], "_", map_data$curr_coords[2])))
+
+map_data$revealed <- append(map_data$revealed, 
+                            list(filter(map_data$patches, coords == "0_1")))
+
+pmap_dfr(select(map_data$revealed, remain, x, y), plot_revealed_food)
+
+plot_revealed_food(select(map_data$revealed, remain, x, y))
+
+map(map_data$revealed, plot_revealed_food)
+
+ggplot() +
+  geom_tile(data = map_data$patches, 
+            aes(x = x, y = y, fill = type),
+            color = "black", alpha = 0.7) +
+  map(map_data$revealed, plot_revealed_food) +
+  geom_point(aes(x = map_data$curr_coords[1], y = map_data$curr_coords[2] - 0.25), 
+             color = "black", fill = "tan4", size = 5, shape = 24) +
+  coord_fixed(xlim = c(-4,4), ylim = c(-4,4), expand = FALSE) +
+  scale_fill_manual(values = c("chartreuse", "goldenrod", "darkgreen"),
+                    labels = c("Grass - Low Ticks",
+                               "Savanna - Medium Ticks",
+                               "Forest - High Ticks"),
+                    drop = FALSE, name = "Patch Type") +
+  theme_void() +
+  theme(panel.border = element_rect(color = "black", size = 1, fill = NA))
 
 latest <- reactive({
   data.frame(Action = c("Move", "Forage"),
