@@ -16,8 +16,8 @@ generate_patch <- function(type){
   patch <- tibble(type = type) %>%
     mutate(
       type = factor(type, levels = c("grass","savanna","forest")),
-      ticks = as.numeric(type) * 2,
-      min_rich = as.numeric(type),
+      ticks = (as.numeric(type) * 2) - 1,
+      min_rich = as.numeric(type) + 1,
       max_rich = as.numeric(type) + 3,
       rich = sample(min_rich:max_rich, 1),
       remain = rich
@@ -231,7 +231,7 @@ server <- function(input, output) {
   latest <- reactive({
     tibble(Action = c("Move", "Forage"),
                Roll = c(mouse_data$tick_roll, mouse_data$forage_roll),
-               Patch = c(mouse_data$patch_ticks, mouse_data$patch_rich),
+               Patch = c(mouse_data$patch_ticks, mouse_data$patch_remain),
                Result = c(str_c(as.character(mouse_data$new_ticks), " new ticks"),
                           str_c(as.character(mouse_data$forage), " energy gained")))
   })
