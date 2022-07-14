@@ -12,6 +12,135 @@ library(landscapeR)
 library(raster)
 library(tidyverse)
 
+### modified percolation idea
+
+landscape_percolator <- function(size, potential_prop, cluster){
+  potential <- floor((size^2) * potential_prop)
+  coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2),
+                   value = rep(0, size^2))
+  
+  
+  
+  possibles <- coords$id
+  for(p in seq_len(potential)){
+    
+    point <- sample(possibles, size = 1, prob = length(possibles):1)
+    coords[coords$id %in% point, "value"] <- 1
+    
+    ## Update weights
+    ones <- coords[coords$value == 1,]$id
+    zeroes <- coords[coords$value == 0,]$id
+    for(i in zeroes){
+      coords_i <- coords[coords$id %in% i, c("x", "y")]
+      dists_i <- 0
+      for(j in ones){
+        coords_j <- coords[coords$id %in% j, c("x", "y")]
+        dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+        dists_i <- dists_i + dist_ij
+      }
+      inv_dist <- 1/dists_i
+      coords[coords$id %in% i, "weight"] <- (1/(size^2)) + inv_dist
+    }
+    
+    possibles <- coords %>%
+      filter(value == 0) %>%
+      slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+      pull(id)
+    
+  }
+  
+  landscape <- matrix(coords$value, nrow = size, ncol = size)
+  
+  return(landscape)
+}
+
+walk(seq(0.1,1,0.1), function(x){
+  plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = x)))})
+
+sum(landscape_percolator(12, 0.5, 1))
+
+## set grid size
+size <- 12
+potential_prop <- 0.25
+cluster <- 0.1
+
+## Create landscape info tibble
+
+potential <- floor((size^2) * potential_prop)
+coords <- tibble(x = rep(1:size, size), 
+                 y = rep(1:size, each = size),
+                 id = str_c(x, y, sep = "_"),
+                 weight = rep(1, size^2),
+                 value = rep(0, size^2))
+
+
+
+possibles <- coords$id
+for(p in seq_len(potential)){
+  
+  point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+  coords[coords$id %in% point, "value"] <- 1
+  
+  ## Update weights
+  ones <- coords[coords$value == 1,]$id
+  zeroes <- coords[coords$value == 0,]$id
+  for(i in zeroes){
+    coords_i <- coords[coords$id %in% i, c("x", "y")]
+    dists_i <- 0
+    for(j in ones){
+      coords_j <- coords[coords$id %in% j, c("x", "y")]
+      dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+      dists_i <- dists_i + dist_ij
+    }
+    inv_dist <- 1/dists_i
+    coords[coords$id %in% i, "weight"] <- (1/(size^2)) + inv_dist
+  }
+  
+  possibles <- coords %>%
+    filter(value == 0) %>%
+    slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+    pull(id)
+  
+}
+
+sum(coords$value)
+
+landscape <- matrix(coords$value, nrow = size, ncol = size)
+
+plot(raster(landscape))
+
+possibles <- coords$id
+point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+coords[coords$id %in% point, "value"] <- 1
+
+## Update weights
+ones <- coords[coords$value == 1,]$id
+zeroes <- coords[coords$value == 0,]$id
+for(i in zeroes){
+  coords_i <- coords[coords$id %in% i, c("x", "y")]
+  dists_i <- 0
+  for(j in ones){
+    coords_j <- coords[coords$id %in% j, c("x", "y")]
+    dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+    dists_i <- dists_i + dist_ij
+  }
+  inv_dist <- 1/dists_i
+  coords[coords$id %in% i, "weight"] <- (1/(size^2)) + inv_dist
+}
+
+possibles <- coords %>%
+  filter(value == 0) %>%
+  slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+  pull(id)
+
+
+cluster <- 0.1
+order(coords$weight)[1:floor((length(coords$weight) * cluster))]
+
+
 ### while loop clustering
 
 generate_landscape <- function(size = 24, c_factor = 1, potential_prop = 0.25){
