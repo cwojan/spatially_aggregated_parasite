@@ -11,6 +11,7 @@ library(purrr)
 library(landscapeR)
 library(raster)
 library(tidyverse)
+library(ape)
 
 ### modified percolation idea
 
@@ -52,7 +53,8 @@ landscape_percolator <- function(size, potential_prop, cluster){
     
   }
   
-  landscape <- matrix(coords$value, nrow = size, ncol = size)
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = size, ncol = size))
   
   return(landscape)
 }
@@ -63,6 +65,64 @@ walk(seq(0,10,1), function(x){
 
 plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = 7)))
 sum(landscape_percolator(12, 0.5, 1))
+
+## test moran's I
+
+landscape <- landscape_percolator(size = 12, potential_prop = 0.25, cluster = 4)
+
+plot(raster(landscape$matrix))
+
+ls_coords <- landscape$coords
+
+ls_dists <- as.matrix(dist(cbind(ls_coords$x, ls_coords$y)))
+
+ls_dists_inv <- 1/ls_dists
+diag(ls_dists_inv) <- 0
+
+Moran.I(ls_coords$value, ls_dists_inv)
+
+moran_tester <- function(landscape){
+  ls_coords <- landscape$coords
+  
+  ls_dists <- as.matrix(dist(cbind(ls_coords$x, ls_coords$y)))
+  
+  ls_dists_inv <- 1/ls_dists
+  diag(ls_dists_inv) <- 0
+  
+  result <- Moran.I(ls_coords$value, ls_dists_inv)
+  return(result)
+}
+
+analyze_clustering <- function(size, potential_prop, cluster){
+  landscape <- landscape_percolator(size = size, 
+                                    potential_prop = potential_prop, 
+                                    cluster = cluster)
+  moran_result <- moran_tester(landscape)
+  
+  result <- tibble(cluster = cluster, 
+                   moran = moran_result$observed, 
+                   p = moran_result$p.value)
+  
+  return(result)
+}
+
+test_ac <- analyze_clustering(size = 12, potential_prop = 0.25, cluster = 3)
+
+test_values <- rep(0:10, each = 10)
+
+test_map_ac <- map_df(.x = test_values, .f = function(x){
+  analyze_clustering(size = 12, potential_prop = 0.25, cluster = x)})
+
+ggplot(data = test_map_ac) +
+  geom_point(aes(x = cluster, y = moran)) +
+  geom_smooth(aes(x = cluster, y = moran), method = "lm") +
+  theme_bw()
+
+moran_cluster_lm <- lm(moran ~ cluster, data = test_map_ac)
+
+summary(moran_cluster_lm)
+
+plot(sort(test_map_ac$moran))
 
 ## set grid size
 size <- 12
