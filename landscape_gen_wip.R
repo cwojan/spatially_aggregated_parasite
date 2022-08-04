@@ -63,7 +63,7 @@ walk(seq(0,10,1), function(x){
   plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = x)))})
 
 
-plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = 7)))
+plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = 7)$matrix))
 sum(landscape_percolator(12, 0.5, 1))
 
 ## test moran's I
