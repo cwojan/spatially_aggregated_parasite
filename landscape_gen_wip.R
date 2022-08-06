@@ -60,11 +60,13 @@ landscape_percolator <- function(size, potential_prop, cluster){
 }
 
 walk(seq(0,10,1), function(x){
-  plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = x)))})
+  plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = x)$matrix))})
 
 
-plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = 7)$matrix))
+plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = 1000)$matrix))
 sum(landscape_percolator(12, 0.5, 1))
+
+log(1.7^2)
 
 ## test moran's I
 
@@ -108,7 +110,7 @@ analyze_clustering <- function(size, potential_prop, cluster){
 
 test_ac <- analyze_clustering(size = 12, potential_prop = 0.25, cluster = 3)
 
-test_values <- rep(0:10, each = 10)
+test_values <- rep(0:100)/10
 
 test_map_ac <- map_df(.x = test_values, .f = function(x){
   analyze_clustering(size = 12, potential_prop = 0.25, cluster = x)})
@@ -116,11 +118,18 @@ test_map_ac <- map_df(.x = test_values, .f = function(x){
 ggplot(data = test_map_ac) +
   geom_point(aes(x = cluster, y = moran)) +
   geom_smooth(aes(x = cluster, y = moran), method = "lm") +
+  geom_line(aes(x = cluster, y = log_pred)) +
   theme_bw()
 
-moran_cluster_lm <- lm(moran ~ cluster, data = test_map_ac)
+moran_cluster_lm <- lm((moran) ~ cluster, data = test_map_ac)
 
 summary(moran_cluster_lm)
+
+plot(moran_cluster_lm)
+
+test_map_ac$log_pred <- 10^predict(moran_cluster_lm, test_map_ac)
+
+length(10^predict(moran_cluster_lm))
 
 plot(sort(test_map_ac$moran))
 
