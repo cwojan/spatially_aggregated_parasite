@@ -67,11 +67,78 @@ landscape_percolator <- function(size, potential_prop, cluster){
   return(landscape)
 }
 
-## Host movement simulator function
-move_sim <- function(landscape, n_hosts, timesteps){
+## Host movement simulator functions
+
+move_host <- function(hid, host_data, moves, torus_helper, parasite_locs){
+  host_i <- filter(host_data, host_id %in% hid)
+  move_i <- filter(moves, move %in% sample(moves$move, size = 1))
+  host_i <- host_i %>%
+    mutate(
+      x = x + move_i$dx,
+      y = y + move_i$dy,
+      x = torus_helper %>% filter(raw %in% x) %>% pull(wrap),
+      y = torus_helper %>% filter(raw %in% y) %>% pull(wrap),
+      id = str_c(x, y, sep = "_"),
+      time = time + 1
+    )
+  if(host_i$id %in% parasite_locs){
+    host_i <- host_i %>%
+      mutate(parasites = parasites + rbinom(1, 1, 0.5))
+  }
+  return(host_i)
+}
+
+move_sim1 <- function(landscape, n_hosts, timesteps){
+  coords <- landscape$coords
+  parasite_locs <- filter(coords, value %in% 1) %>% pull(id)
+  
+  size <- max(coords$x)
+  
+  host_origins <- slice_sample(coords, n = n_hosts, replace = TRUE)
+  
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           parasites = 0,
+           time = 0)
+  
+  moves <- tibble(move = c("stay", "up", "left", "right", "down"),
+                  dx = c(0, 0, -1, 1, 0),
+                  dy = c(0, 1, 0, 0, -1))
+  
+  torus_helper <- tibble(raw = c(0, seq_len(size), size + 1),
+                         wrap = c(size, seq_len(size),1))
+  
+  for(t in (seq_len(timesteps) - 1)) {
+    hosts_t <- filter(hosts, time %in% t)
+    
+    hosts_tplus1 <- map_df(seq_len(n_hosts), move_host, host_data = hosts_t, 
+                           moves = moves, torus_helper = torus_helper,
+                           parasite_locs = parasite_locs)
+    
+    hosts <- bind_rows(hosts, hosts_tplus1)
+  }
+  
+  end_hosts <- filter(hosts, time %in% timesteps)
+  end_parasites <- pull(end_hosts, parasites)
+  
+  sim_data <- list(hosts = hosts,
+                   stats = cbind(landscape$ls_stats,
+                                 tibble(
+                                   mean = mean(end_parasites),
+                                   variance = var(end_parasites),
+                                   dispersion = variance / mean
+                   )))
+  
+  return(sim_data)
+}
+
+move_sim2 <- function(landscape, n_hosts, timesteps){
   coords <- landscape$coords
   
   size <- max(coords$x)
+  
+  parasite_locs <- filter(coords, value %in% 1) %>% pull(id)
   
   host_origins <- slice_sample(coords, n = n_hosts, replace = TRUE)
   
@@ -94,7 +161,6 @@ move_sim <- function(landscape, n_hosts, timesteps){
     for(i in seq_len(n_hosts)){
       host_i <- filter(hosts_t, host_id %in% i)
       move_i <- filter(moves, move %in% sample(moves$move, size = 1))
-      parasite_locs <- filter(coords, value %in% 1) %>% pull(id)
       host_i <- host_i %>%
         mutate(
           x = x + move_i$dx,
@@ -121,7 +187,7 @@ move_sim <- function(landscape, n_hosts, timesteps){
                                    mean = mean(end_parasites),
                                    variance = var(end_parasites),
                                    dispersion = variance / mean
-                   )))
+                                 )))
   
   return(sim_data)
 }
@@ -137,12 +203,38 @@ landscape_list <- map(cluster_values,
 
 test_ls <- landscape_list[[1]]
 
-test_move <- move_sim(landscape = test_ls, n_hosts = 24, timesteps = 10)
+test_move <- move_sim(landscape = test_ls, n_hosts = 24, timesteps = 2)
+
+view(test_move$hosts)
 
 cbind(test_ls$ls_stats, test_move$stats)
 
-sim_list <- map(landscape_list, ~move_sim(landscape = .x, n_hosts = 24, timesteps = 100))
+start1 <- Sys.time()
+sim_list1 <- map(landscape_list, function(x){
+  map(seq_len(2), ~move_sim1(landscape = x, n_hosts = 24, timesteps = 5))})
+end1 <- Sys.time()
 
-sim_stats <- map_df(sim_list, function(x){return(x$stats)})
+start2 <- Sys.time()
+sim_list2 <- map(landscape_list, function(x){
+  map(seq_len(2), ~move_sim2(landscape = x, n_hosts = 24, timesteps = 5))})
+end2 <- Sys.time()
+
+time1 <- end1 - start1
+time2 <- end2 - start2
+
+str_c("1: ", time1, "\n2: ", time2)
+
+sim_list <- map(landscape_list, function(x){
+  map(seq_len(10), ~move_sim(landscape = x, n_hosts = 24, timesteps = 100))})
+
+sim_stats <- map_df(sim_list, function(x){
+  return(map_df(x, function(y){return(y$stats)}))
+}) %>%
+  pivot_longer(cols = c(mean, variance, dispersion))
+
+ggplot(data = sim_stats) +
+  geom_point(aes(x = moran, y = value)) +
+  facet_wrap(vars(name)) +
+  theme_bw()
 
 
