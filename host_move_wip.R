@@ -84,9 +84,12 @@ torus_helper <- tibble(raw = c(0, seq_len(size), size + 1),
                        wrap = c(size, seq_len(size),1))
 
 
+
+
 for(i in hosts$host_id){
   host_i <- filter(hosts, host_id %in% i)
   move_i <- filter(moves, move %in% sample(moves$move, size = 1))
+  parasite_locs <- filter(test_coords, value %in% 1) %>% pull(id)
   host_i <- host_i %>%
     mutate(
       x = x + move_i$dx,
@@ -96,6 +99,10 @@ for(i in hosts$host_id){
       id = str_c(x, y, sep = "_"),
       time = time + 1
     )
+  if(host_i$id %in% parasite_locs){
+    host_i <- host_i %>%
+      mutate(parasites = parasites + rbinom(1, 1, 0.5))
+  }
   hosts <- bind_rows(hosts, host_i)
 }
 
@@ -115,4 +122,40 @@ move_host <- function(hid, host_data, moves, torus_helper){
 }
 
 
-move_test <- map_df(seq_len(n_hosts), move_host, host_data = hosts, moves = moves, torus_helper = torus_helper)
+move_test <- map_df(seq_len(n_hosts), move_host, host_data = hosts, 
+                    moves = moves, torus_helper = torus_helper)
+
+
+## iterative movement
+
+timesteps <- 100
+
+seq_len(timesteps) -1
+
+for(t in (seq_len(timesteps) - 1)) {
+  hosts_t <- filter(hosts, time %in% t)
+  
+  for(i in seq_len(n_hosts)){
+    host_i <- filter(hosts_t, host_id %in% i)
+    move_i <- filter(moves, move %in% sample(moves$move, size = 1))
+    parasite_locs <- filter(test_coords, value %in% 1) %>% pull(id)
+    host_i <- host_i %>%
+      mutate(
+        x = x + move_i$dx,
+        y = y + move_i$dy,
+        x = torus_helper %>% filter(raw %in% x) %>% pull(wrap),
+        y = torus_helper %>% filter(raw %in% y) %>% pull(wrap),
+        id = str_c(x, y, sep = "_"),
+        time = time + 1
+      )
+    if(host_i$id %in% parasite_locs){
+      host_i <- host_i %>%
+        mutate(parasites = parasites + rbinom(1, 1, 0.5))
+    }
+    hosts <- bind_rows(hosts, host_i)
+  }
+}
+
+hist(hosts[hosts$time == 100,]$parasites)
+
+plot(raster(test_matrix))
