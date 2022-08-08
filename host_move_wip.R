@@ -159,3 +159,65 @@ for(t in (seq_len(timesteps) - 1)) {
 hist(hosts[hosts$time == 100,]$parasites)
 
 plot(raster(test_matrix))
+
+## Turn into function
+
+move_sim <- function(landscape, n_hosts, timesteps){
+  coords <- landscape$coords
+  
+  host_origins <- slice_sample(coords, n = n_hosts, replace = TRUE)
+  
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           parasites = 0,
+           time = 0)
+  
+  moves <- tibble(move = c("stay", "up", "left", "right", "down"),
+                  dx = c(0, 0, -1, 1, 0),
+                  dy = c(0, 1, 0, 0, -1))
+  
+  torus_helper <- tibble(raw = c(0, seq_len(size), size + 1),
+                         wrap = c(size, seq_len(size),1))
+  
+  for(t in (seq_len(timesteps) - 1)) {
+    hosts_t <- filter(hosts, time %in% t)
+    
+    for(i in seq_len(n_hosts)){
+      host_i <- filter(hosts_t, host_id %in% i)
+      move_i <- filter(moves, move %in% sample(moves$move, size = 1))
+      parasite_locs <- filter(test_coords, value %in% 1) %>% pull(id)
+      host_i <- host_i %>%
+        mutate(
+          x = x + move_i$dx,
+          y = y + move_i$dy,
+          x = torus_helper %>% filter(raw %in% x) %>% pull(wrap),
+          y = torus_helper %>% filter(raw %in% y) %>% pull(wrap),
+          id = str_c(x, y, sep = "_"),
+          time = time + 1
+        )
+      if(host_i$id %in% parasite_locs){
+        host_i <- host_i %>%
+          mutate(parasites = parasites + rbinom(1, 1, 0.5))
+      }
+      hosts <- bind_rows(hosts, host_i)
+    }
+  }
+  
+  end_hosts <- filter(hosts, time %in% timesteps)
+  end_parasites <- pull(end_hosts, parasites)
+  
+  sim_data <- list(hosts = hosts,
+                   stats = tibble(
+                     mean = mean(end_parasites),
+                     variance = var(end_parasites),
+                     dispersion = variance / mean
+                   ))
+  
+  return(sim_data)
+}
+
+move_test <- move_sim(test_ls, 24, 100)
+
+
+
