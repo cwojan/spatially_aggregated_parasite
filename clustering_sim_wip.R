@@ -194,7 +194,7 @@ move_sim2 <- function(landscape, n_hosts, timesteps){
 
 ## Generate a bunch of landscapes
 
-cluster_values <- 0:10
+cluster_values <- 0:100 / 10
 
 landscape_list <- map(cluster_values, 
                       ~landscape_percolator(size = 12, potential_prop = 0.25, cluster = .x))
@@ -225,7 +225,7 @@ time2 <- end2 - start2
 str_c("1: ", time1, "\n2: ", time2)
 
 sim_list <- map(landscape_list, function(x){
-  map(seq_len(10), ~move_sim(landscape = x, n_hosts = 24, timesteps = 100))})
+  map(seq_len(10), ~move_sim1(landscape = x, n_hosts = 24, timesteps = 50))})
 
 sim_stats <- map_df(sim_list, function(x){
   return(map_df(x, function(y){return(y$stats)}))
@@ -236,5 +236,18 @@ ggplot(data = sim_stats) +
   geom_point(aes(x = moran, y = value)) +
   facet_wrap(vars(name)) +
   theme_bw()
+
+ggplot(data = filter(sim_stats, name == "dispersion")) +
+  geom_point(aes(x = moran, y = value)) +
+  theme_bw()
+
+disp_lm <- lm(value ~ moran, data = filter(sim_stats, name == "dispersion"))
+summary(disp_lm)
+
+mean_lm <- lm(value ~ moran, data = filter(sim_stats, name == "mean"))
+summary(mean_lm)
+
+
+write_rds(sim_list, "sim_20220812.rds")
 
 
