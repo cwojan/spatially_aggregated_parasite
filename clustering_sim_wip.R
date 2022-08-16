@@ -250,4 +250,31 @@ summary(mean_lm)
 
 write_rds(sim_list, "sim_20220812.rds")
 
+sim_listr <- read_rds("data/sim_20220812.rds")
 
+sim_stats <- map_df(sim_listr, function(x){
+  return(map_df(x, function(y){return(y$stats)}))
+}) %>%
+  pivot_longer(cols = c(mean, variance, dispersion))
+
+ggplot(data = sim_stats) +
+  geom_point(aes(x = cluster, y = moran)) +
+  geom_smooth(aes(x = cluster, y = moran), method = "lm", se = FALSE) +
+  theme_bw()
+
+ggplot(data = filter(sim_stats, name == "mean")) +
+  geom_point(aes(x = moran, y = value)) +
+  labs(y = "mean") +
+  theme_bw()
+
+ggplot(data = filter(sim_stats, name == "variance")) +
+  geom_point(aes(x = moran, y = value)) +
+  geom_smooth(aes(x = moran, y = value), method = "lm", se = FALSE) +
+  labs(y = "variance") +
+  theme_bw()
+
+ggplot(data = filter(sim_stats, name == "dispersion")) +
+  geom_point(aes(x = moran, y = value)) +
+  geom_smooth(aes(x = moran, y = value), method = "lm", se = FALSE) +
+  labs(y = "dispersion") +
+  theme_bw()

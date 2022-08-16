@@ -62,6 +62,29 @@ landscape_percolator <- function(size, potential_prop, cluster){
 walk(seq(0,10,1), function(x){
   plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = x)$matrix))})
 
+cluster <- 0
+test_ls <- landscape_percolator(size = 12, potential_prop = 0.25, cluster = cluster)
+moran_result <- moran_tester(test_ls)
+title <- str_c("Cluster: ", cluster, "\nMoran's I: ", moran_result$observed)
+ggplot(data = test_ls$coords) +
+  geom_tile(aes(x = x, y = y, fill = factor(value)), color = "black") +
+  scale_fill_manual(values = c("white", "red"), name = "Parasite?") +
+  labs(title = title) +
+  theme_void()
+
+ls_plotter <- function(x){
+  cluster <- x
+  test_ls <- landscape_percolator(size = 12, potential_prop = 0.25, cluster = cluster)
+  moran_result <- moran_tester(test_ls)
+  title <- str_c("Cluster: ", cluster, "\nMoran's I: ", moran_result$observed)
+  ggplot(data = test_ls$coords) +
+    geom_tile(aes(x = x, y = y, fill = factor(value)), color = "black") +
+    scale_fill_manual(values = c("white", "red"), name = "Parasite?") +
+    labs(title = title) +
+    theme_void()
+}
+
+map(seq(0,20,1), ls_plotter)
 
 plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = 1000)$matrix))
 sum(landscape_percolator(12, 0.5, 1))
@@ -113,12 +136,11 @@ test_ac <- analyze_clustering(size = 12, potential_prop = 0.25, cluster = 3)
 test_values <- rep(0:100)/10
 
 test_map_ac <- map_df(.x = test_values, .f = function(x){
-  analyze_clustering(size = 12, potential_prop = 0.25, cluster = x)})
+  analyze_clustering(size = 12, potential_prop = 0.5, cluster = x)})
 
 ggplot(data = test_map_ac) +
   geom_point(aes(x = cluster, y = moran)) +
-  geom_smooth(aes(x = cluster, y = moran), method = "lm") +
-  geom_line(aes(x = cluster, y = log_pred)) +
+  geom_smooth(aes(x = cluster, y = moran), method = "lm", se = FALSE) +
   theme_bw()
 
 moran_cluster_lm <- lm((moran) ~ cluster, data = test_map_ac)
