@@ -278,3 +278,9 @@ ggplot(data = filter(sim_stats, name == "dispersion")) +
   geom_smooth(aes(x = moran, y = value), method = "lm", se = FALSE) +
   labs(y = "dispersion") +
   theme_bw()
+
+test_hosts <- sim_listr[[99]][[1]]$hosts
+
+end_t_hosts <- filter(test_hosts, time %in% max(time))
+
+hist(end_t_hosts$parasites)
