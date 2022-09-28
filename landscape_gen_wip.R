@@ -60,7 +60,7 @@ landscape_percolator <- function(size, potential_prop, cluster){
 }
 
 walk(seq(0,10,1), function(x){
-  plot(raster(landscape_percolator(size = 12, potential_prop = 0.25, cluster = x)$matrix))})
+  plot(raster(landscape_percolator(size = 12, potential_prop = 0.1, cluster = x)$matrix))})
 
 cluster <- 0
 test_ls <- landscape_percolator(size = 12, potential_prop = 0.25, cluster = cluster)
