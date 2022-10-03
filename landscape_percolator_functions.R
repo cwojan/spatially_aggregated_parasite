@@ -169,7 +169,8 @@ mod_ls_percolator <- function(width, length, prop, c_factor, c_num){
 plot(raster(landscape_percolator(12,0.25,0)$matrix))
 
 ## Modified
-plot(raster(mod_ls_percolator(10,15,0.25,100,4)$matrix))
+plot(raster(mod_ls_percolator(10,15,0.2,100,6)$matrix))
+
 
 
                   

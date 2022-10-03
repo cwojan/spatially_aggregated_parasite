@@ -16,7 +16,10 @@ generate_patch <- function(type){
   patch <- tibble(type = type) %>%
     mutate(
       type = factor(type, levels = c("grass","savanna","forest")),
-      ticks = (as.numeric(type) * 2) - 1,
+      mticks = max(as.numeric(type) - 2, 0),
+      mt_remain = mticks,
+      fticks = as.numeric(type),
+      ft_remain = fticks,
       min_rich = as.numeric(type) + 1,
       max_rich = as.numeric(type) + 3,
       rich = sample(min_rich:max_rich, 1),
@@ -41,7 +44,7 @@ generate_deck <- function(size = 25){
 plot_food_spaces <- function(patch){
   food_x <- seq(from = patch$x - 0.35, to = (patch$x - 0.35) + (patch$rich - 1) * 0.15, 
                 by = 0.15)
-  geom <- geom_point(aes(x = food_x, y = patch$y + 0.25), 
+  geom <- geom_point(aes(x = food_x, y = patch$y + 0.2), 
                      color = "black", shape = 1, size = 3.5)
 }
 
@@ -54,7 +57,7 @@ plot_revealed_food <- function(patch){
                   by = 0.15)
     food_size = 3
   }
-  geom <- geom_point(aes(x = food_x, y = patch$y + 0.25), color = "red", size = food_size)
+  geom <- geom_point(aes(x = food_x, y = patch$y + 0.2), color = "red", size = food_size)
 }
 
 move_mouse <- function(map_data, revealed, mouse_data, coord, boundary, direction){
@@ -69,11 +72,9 @@ move_mouse <- function(map_data, revealed, mouse_data, coord, boundary, directio
         names(new_patch_list) <- coord_label
         revealed$revealed <- append(revealed$revealed, new_patch_list)
       }
-      mouse_data$patch_ticks <- new_patch$ticks
-      mouse_data$tick_roll <- sample(1:6, 1)
-      mouse_data$new_ticks <- ifelse(mouse_data$tick_roll > mouse_data$patch_ticks,
-                                     0, mouse_data$tick_roll)
-      mouse_data$ticks <- mouse_data$ticks + mouse_data$new_ticks
+      mouse_data$patch_mticks <- new_patch$mticks
+      map_data$patches[map_data$patches$coords == coord_label,"mt_remain"] <- 0
+      mouse_data$ticks <- mouse_data$ticks + mouse_data$patch_mticks
       mouse_data$turns <- mouse_data$turns - 1
     }
   }
@@ -128,9 +129,8 @@ server <- function(input, output) {
     curr_coords = c(0,0),
     energy = 2,
     ticks = 0,
-    tick_roll = NA,
-    new_ticks = NA,
-    patch_ticks = NA,
+    patch_mticks = NA,
+    patch_ft_remain = NA,
     forage_roll = NA,
     forage = NA,
     patch_remain = NA,
@@ -163,12 +163,19 @@ server <- function(input, output) {
       coord_label <- str_c(mouse_data$curr_coords[1], "_", 
                            mouse_data$curr_coords[2])
       mouse_data$patch_remain <- revealed$revealed[[coord_label]]$remain
+      mouse_data$patch_ft_remain <- 
+        map_data$patches[map_data$patches$coords == coord_label, "ft_remain"]
       mouse_data$forage_roll <- sample(1:6, 1)
       mouse_data$forage <- ifelse(mouse_data$forage_roll > mouse_data$patch_remain, 
                                   0, 
                                   mouse_data$forage_roll)
       revealed$revealed[[coord_label]]$remain <- 
         mouse_data$patch_remain - mouse_data$forage
+      if(mouse_data$patch_ft_remain > 0){
+        mouse_data$ticks  <- mouse_data$ticks + 1
+        map_data$patches[map_data$patches$coords == coord_label, "ft_remain"] <- 
+          mouse_data$patch_ft_remain - 1
+      }
       mouse_data$energy <- mouse_data$energy + mouse_data$forage
       mouse_data$turns <- mouse_data$turns - 1
     }
@@ -210,16 +217,23 @@ server <- function(input, output) {
       geom_tile(data = map_data$patches, 
                 aes(x = x, y = y, fill = type),
                 color = "black", alpha = 0.7) +
+      geom_point(data = map_data$patches,
+                 aes(x = x - 0.35, y = y - 0.3, alpha = if_else(mticks == 1, "y", "n")),
+                 color = "black", shape = 5, size = 3.5) +
+      geom_point(data = map_data$patches,
+                 aes(x = x - 0.35, y = y - 0.3, alpha = if_else(mt_remain == 1, "y", "n")),
+                 color = "black", shape = 18, size = 3) +
       map(revealed$revealed, plot_food_spaces) +
       map(revealed$revealed, plot_revealed_food) +
       geom_point(aes(x = mouse_data$curr_coords[1], y = mouse_data$curr_coords[2] - 0.25), 
                  color = "black", fill = "tan4", size = 5, shape = 24) +
       coord_fixed(xlim = c(-3,3), ylim = c(-3,3), expand = FALSE) +
       scale_fill_manual(values = c("chartreuse", "goldenrod", "darkgreen"),
-                        labels = c("Grass \n- Low Ticks & Resources",
-                                   "Savanna \n- Medium Ticks & Resources",
-                                   "Forest \n- High Ticks & Resources"),
+                        labels = c("Grass \n- Low Resources, Low Ticks",
+                                   "Savanna \n- Medium Resources, Medium Ticks",
+                                   "Forest \n- High Resources, High Ticks"),
                         drop = FALSE, name = "Patch Type") +
+      scale_alpha_manual(values = c(0, 1), guide = "none") +
       theme_void() +
       theme(panel.border = element_rect(color = "black", size = 1, fill = NA))
     return(landscape)
@@ -229,11 +243,10 @@ server <- function(input, output) {
                Value = c(mouse_data$energy, mouse_data$ticks, mouse_data$turns))
   })
   latest <- reactive({
-    tibble(Action = c("Move", "Forage"),
-               Roll = c(mouse_data$tick_roll, mouse_data$forage_roll),
-               Patch = c(mouse_data$patch_ticks, mouse_data$patch_remain),
-               Result = c(str_c(as.character(mouse_data$new_ticks), " new ticks"),
-                          str_c(as.character(mouse_data$forage), " energy gained")))
+    tibble(Action = c("Forage"),
+               Roll = c(mouse_data$forage_roll),
+               Patch = c(mouse_data$patch_remain),
+               Result = c(str_c(as.character(mouse_data$forage), " energy gained")))
   })
 
   output$map <- renderPlot({

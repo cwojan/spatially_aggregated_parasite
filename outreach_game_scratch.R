@@ -2,6 +2,27 @@ library(shiny)
 library(tidyverse)
 library(ggplot2)
 
+
+generate_patch <- function(type){
+  patch <- tibble(type = type) %>%
+    mutate(
+      type = factor(type, levels = c("grass","savanna","forest")),
+      mticks = max(as.numeric(type) - 2, 0),
+      fticks = as.numeric(type),
+      min_rich = as.numeric(type) + 1,
+      max_rich = as.numeric(type) + 3,
+      rich = sample(min_rich:max_rich, 1),
+      remain = rich
+    )
+}
+
+map_data <- list(patches = generate_deck(size = 25))
+
+
+
+
+########
+
 generate_patch <- function(type){
   patch <- tibble(type = type) %>%
     mutate(
