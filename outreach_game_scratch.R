@@ -16,9 +16,28 @@ generate_patch <- function(type){
     )
 }
 
+generate_deck <- function(size = 25){
+  type_count <- floor(size / 3)
+  forest_count <- type_count + (size %% 3)
+  types <- c(rep(c("grass", "savanna"), each = type_count),
+             rep("forest", forest_count))
+  available_coords <- str_c(rep(-2:2, 5), rep(-2:2, each = 5), 
+                            sep = "_")
+  deck <- map_df(types, generate_patch) %>%
+    mutate(
+      coords = sample(available_coords, size = size)
+    ) %>%
+    separate(coords, into = c("x","y"), sep = "_", remove = FALSE, convert = TRUE)
+}
+
 map_data <- list(patches = generate_deck(size = 25))
 
+map_dat <- generate_deck()
 
+ggplot() +
+  geom_tile(data = map_dat, 
+            aes(x = x, y = y, fill = type),
+            color = "black", alpha = 0.7)
 
 
 ########
