@@ -18,7 +18,9 @@ generate_patch <- function(type){
       type = factor(type, levels = c("grass","savanna","forest")),
       mticks = max(as.numeric(type) - 2, 0),
       mt_remain = mticks,
-      fticks = as.numeric(type) - 1,
+      min_fticks = as.numeric(type) - 1,
+      max_fticks = as.numeric(type),
+      fticks = sample(min_fticks:max_fticks, 1),
       ft_remain = fticks,
       min_rich = as.numeric(type) + 1,
       max_rich = as.numeric(type) + 3,
@@ -222,8 +224,8 @@ server <- function(input, output) {
       revealed$revealed[[coord_label]]$remain <- 
         mouse_data$patch_remain - mouse_data$forage
       if(mouse_data$patch_ft_remain > 0){
-        mouse_data$ticks  <- mouse_data$ticks + 1
-        revealed$revealed[[coord_label]]$ft_remain <- mouse_data$patch_ft_remain - 1
+        mouse_data$ticks  <- mouse_data$ticks + mouse_data$patch_ft_remain
+        revealed$revealed[[coord_label]]$ft_remain <- 0
       }
       mouse_data$energy <- mouse_data$energy + mouse_data$forage
       mouse_data$turns <- mouse_data$turns - 1
@@ -265,7 +267,7 @@ server <- function(input, output) {
   
   observeEvent(mouse_data$energy, {
     if(mouse_data$energy == 0){
-      results <- str_c("Eaten by a fox!\nScore: ",
+      results <- str_c("Eaten by a fox!\nWeight Score: ",
                        mouse_data$energy - (mouse_data$ticks)/2)
       showNotification(ui = results,
                        type = "message",
