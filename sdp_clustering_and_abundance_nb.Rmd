@@ -1,0 +1,383 @@
+---
+title: "sdp_clustering_and_abundance_notebook"
+output: html_notebook
+---
+
+```{r}
+library(raster)
+library(tidyverse)
+library(ape)
+```
+
+This notebook is to document my exploration of modeling clustering and abundance of an environmental parasite and consequent host parasite burdens.
+
+### Landscape Generation
+
+My first step was figuring out an algorithm to generate "parasite landscapes" with different levels of clustering (spatial autocorrelation as measured by Moran's I).
+
+My first algorithm follows. It makes a square landscape, and doesn't have customizable cluster numbers (i.e., at high clustering, only one cluster is present).
+
+```{r}
+##
+# Basic Landscape Percolator Function 
+##
+
+#' Function inputs:
+#' size, as one dimension (e.g. 12 -> 12 x 12 grid)
+#' prop, proportion of landscape filled
+#' cluster, degree to which percolation is spatially correlated
+
+ls_percolator <- function(size, prop, cluster){
+  ## Calculate number of cells to fill based on size and prop
+  potential <- floor((size^2) * prop)
+  ## Create empty data representing the landscape
+  coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2), # Weight starts equal for all cells
+                   value = rep(0, size^2)) # Cell type starts out as 0 for all
+  
+  ## Initialize the possible percolation locations
+  possibles <- coords$id
+  ## Percolate as many cells as need to be filled
+  for(p in seq_len(potential)){
+    
+    ## Pick a random cell (weighted by the "weight" column) to set as landscape value "1"
+    point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+    coords[coords$id %in% point, "value"] <- 1
+    
+    ## Create vectors of all cells with value 1 and 0
+    ones <- coords[coords$value == 1,]$id
+    zeroes <- coords[coords$value == 0,]$id
+    ## Loop through each cell with value 0
+    for(i in zeroes){
+      ## Save its cordinates as a vector of length 2
+      coords_i <- coords[coords$id %in% i, c("x", "y")]
+      ## Initialize its distances to cells with value 1
+      dists_i <- NULL
+      ## Loop through each cell with value 1
+      for(j in ones){
+        ## Save the jth 1 cell's coordinates as a vector of length 2
+        coords_j <- coords[coords$id %in% j, c("x", "y")]
+        ## Calculate the euclidean distance between the ith 0 cell and the jth 1 cell
+        dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+        ## Add the ij distance to the list of distances for the ith 0 cell
+        dists_i <- c(dists_i, dist_ij)
+      }
+      ## Create an object that represents the inverse minimum distance between the ith 0 cell and a 1 cell
+      inv_dist <- 1/min(dists_i)
+      ## Update the weight for the ith 0 cell, accounting for the cluster factor as an exponent
+      coords[coords$id %in% i, "weight"] <- (1 + inv_dist)^cluster
+    }
+    
+    ## Refill the possible cells for percolation as only the remaining zeroes
+    possibles <- coords %>%
+      filter(value == 0) %>%
+      #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+      pull(id)
+    
+  }
+  
+  ## Save the landscape as the percolated data as a data frame AND as an actual landscape matrix
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = size, ncol = size))
+  
+  ## Return that landscape list
+  return(landscape)
+}
+```
+
+I also made a more complex algorithm for potential use in a forestry methods model with Laura. This algorithm allows for non-square landscapes, and attempts to give some control over number of clusters. However, with high proportion of landscape coverage, clusters often merge.
+
+```{r}
+##
+# Modified Landscape Percolator Function 
+##
+
+#' Function inputs:
+#' width, width of grid
+#' length, length of grid
+#' prop, proportion of landscape filled
+#' c_factor, degree to which percolation is spatially correlated
+#' c_num, number of clusters
+
+mod_ls_percolator <- function(width, length, prop, c_factor, c_num){
+  dims <- width * length
+  ## Calculate number of cells per cluster to fill based on size and prop
+  potential <- floor((dims * prop) / c_num)
+  ## Create empty data representing the landscape
+  coords <- tibble(x = rep(1:width, length), 
+                   y = rep(1:length, each = width),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, dims), # Weight starts equal for all cells
+                   value = rep(0, dims), # Cell type starts out as 0 for all
+                   cluster = rep(0, dims)) # Cluster group starts as 0
+  
+  ## Initialize the possible percolation locations
+  possibles <- coords$id
+  
+  ##
+  for(n in seq_len(c_num)){
+    
+    ## Set weights for cluster n 
+    coords$weight <- 1
+    
+    ## Percolate as many cells as need to be filled
+    for(p in seq_len(potential)){
+      
+      ## Pick a random cell (weighted by the "weight" column) to set as landscape value "1"
+      point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+      coords[coords$id %in% point, "value"] <- 1
+      coords[coords$id %in% point, "cluster"] <- n
+      
+      ## Create vectors of all cells with value 1 in current cluster
+      ones <- coords[coords$value == 1 & coords$cluster == n,]$id
+      zeroes <- coords[coords$value == 0,]$id
+      ## Loop through each cell with value 0
+      for(i in zeroes){
+        ## Save its cordinates as a vector of length 2
+        coords_i <- coords[coords$id %in% i, c("x", "y")]
+        ## Initialize its distances to cells with value 1
+        dists_i <- NULL
+        ## Loop through each cell with value 1
+        for(j in ones){
+          ## Save the jth 1 cell's coordinates as a vector of length 2
+          coords_j <- coords[coords$id %in% j, c("x", "y")]
+          ## Calculate the euclidean distance between the ith 0 cell and the jth 1 cell
+          dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+          ## Add the ij distance to the list of distances for the ith 0 cell
+          dists_i <- c(dists_i, dist_ij)
+        }
+        ## Create an object that represents the inverse minimum distance between the ith 0 cell and a 1 cell
+        inv_dist <- 1/min(dists_i)
+        ## Update the weight for the ith 0 cell, accounting for the cluster factor as an exponent
+        coords[coords$id %in% i, "weight"] <- (1 + inv_dist)^c_factor
+      }
+      
+      ## Refill the possible cells for percolation as only the remaining zeroes
+      possibles <- coords %>%
+        filter(value == 0) %>%
+        #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+        pull(id)
+      
+    }
+  }
+  
+  ## Save the landscape as the percolated data as a data frame AND as an actual landscape matrix
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = width, ncol = length))
+  
+  ## Return that landscape list
+  return(landscape)
+}
+```
+
+(both of these from landscape_percolator_functions.R)
+
+However, neither of these feature an end measure of clustering (Moran's I). The function I used in my test simulation in August 2022 did (clustering_sim_wip.R):
+
+```{r}
+## Landscape generator function
+ls_percolator_moran <- function(size, potential_prop, cluster){
+  potential <- floor((size^2) * potential_prop)
+  coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2),
+                   value = rep(0, size^2))
+  
+  
+  
+  possibles <- coords$id
+  for(p in seq_len(potential)){
+    
+    point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+    coords[coords$id %in% point, "value"] <- 1
+    
+    ## Update weights
+    ones <- coords[coords$value == 1,]$id
+    zeroes <- coords[coords$value == 0,]$id
+    for(i in zeroes){
+      coords_i <- coords[coords$id %in% i, c("x", "y")]
+      dists_i <- NULL
+      for(j in ones){
+        coords_j <- coords[coords$id %in% j, c("x", "y")]
+        dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+        dists_i <- c(dists_i, dist_ij)
+      }
+      inv_dist <- 1/min(dists_i)
+      coords[coords$id %in% i, "weight"] <- (1 + inv_dist)^cluster
+    }
+    
+    possibles <- coords %>%
+      filter(value == 0) %>%
+      #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+      pull(id)
+    
+  }
+  
+  ls_dists <- as.matrix(dist(cbind(coords$x, coords$y)))
+  
+  ls_dists_inv <- 1/ls_dists
+  diag(ls_dists_inv) <- 0
+  
+  moran_result <- Moran.I(coords$value, ls_dists_inv)
+  
+  ls_stats <-tibble(cluster = cluster, 
+                    moran = moran_result$observed, 
+                    p = moran_result$p.value)
+  
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = size, ncol = size),
+                    ls_stats = ls_stats)
+  
+  return(landscape)
+}
+```
+
+But based on Matt's comments in Aug 2022, since I simulate movement assuming a torus landscape, I need to measure spatial autocorrelation based on a torus.
+
+First step: reacquaint myself with how non-torus spatial autocorrelation is measured:
+
+```{r}
+
+## First, grab a landscape
+test_ls <- ls_percolator(12, 0.25, 5)
+test_coords <- test_ls$coords
+
+## Then I take the coords and calculate distances between each cell
+test_dists <- as.matrix(dist(cbind(test_coords$x, test_coords$y)))
+
+## Then find the inverse distance (bigger values for nearer cells)
+test_dists_inv <- 1/test_dists
+diag(test_dists_inv) <- 0
+
+## Then Moran.I can test the autocorrelation of the value of each coord
+moran_result <- Moran.I(test_coords$value, test_dists_inv)
+moran_result
+```
+
+So, what needs to change is the distance calculation, such that the distance between two cells is the shortest path given a torus. For example, in a 12x12 grid, cell (1,1) should be 1 cell from cell (1,12), not 11 cells.
+
+1 - 1 = 0
+
+12 - 1 = 11
+
+sqrt(0\^2 + 11\^2) = 11
+
+12 ? 1 = 1...
+
+Considering torus_helper function from my "host_move_wip.R" does not seem to be relevant, as it's just a key for movement out of bounds to wrap around.
+
+```{r}
+
+size <- 12
+
+torus_helper <- tibble(raw = c(0, seq_len(size), size + 1),
+                       wrap = c(size, seq_len(size),1))
+```
+
+What if I create two integer values for the dimensional boundaries, find the distance of both cells from their boundaries, then add those distances, and check if it is smaller than the traditional distance?
+
+```{r}
+
+size <- 12
+
+## First, grab a landscape
+test_ls <- ls_percolator(12, 0.25, 5)
+test_coords <- test_ls$coords
+
+## create boundaries
+boundaries <- c(0,size)
+
+## grab some sample coordinates
+sample_coords <- test_coords[c(1,12),1:3]
+
+sample_coords <- test_coords[sample(nrow(test_coords), 2),]
+
+## calculate the non-torus difference
+trad_diffs <- abs(sample_coords[2,1:2] - sample_coords[1,1:2])
+
+## calculate the distance to boundary for each point in both axes
+## note: pmin only works with separate columns,
+## not multiple in line calcs of the same column
+sample_coords <- sample_coords %>%
+  mutate(x_to_l = abs(0 - x),
+         x_to_r = size - x,
+         y_to_t = abs(0 - y),
+         y_to_b = size - y,
+         x_to_bound = pmin(x_to_l, x_to_r),
+         y_to_bound = pmin(y_to_t, y_to_b)) %>%
+  column_to_rownames("id")
+
+
+ids <- row.names(sample_coords)
+
+combn(ids, 2)
+
+## next, figure out a function to calculate two distances: traditional and wrapped
+
+
+
+filt_coords <- sample_coords[ids,]
+
+filt_dist <- tibble(x_trad = abs(diff(filt_coords$x)),
+                     y_trad = abs(diff(filt_coords$y)),
+                     x_torus = sum(filt_coords$x_to_bound),
+                     y_torus = sum(filt_coords$y_to_bound)) %>%
+  mutate(x_short = pmin(x_trad, x_torus),
+         y_short = pmin(y_trad, y_torus)) %>%
+  select(x_short, y_short) %>%
+  `^`(2) %>%
+  sum() %>%
+  sqrt()
+
+
+## Now turn that code into a function
+
+## first the function for just a pair distance
+torus_pair_dist <- function(coords, ids){
+  
+  ## Filter down to only two points and calc boundary distances
+  filt_coords <- coords %>%
+    filter(id %in% ids) %>%
+    mutate(x_to_l = abs(0 - x),
+           x_to_r = size - x,
+           y_to_t = abs(0 - y),
+           y_to_b = size - y,
+           x_to_bound = pmin(x_to_l, x_to_r),
+           y_to_bound = pmin(y_to_t, y_to_b))
+  
+  ## Find the x and y distances
+  filt_dist <- tibble(x_trad = abs(diff(filt_coords$x)),
+                      y_trad = abs(diff(filt_coords$y)),
+                      x_torus = sum(filt_coords$x_to_bound),
+                      y_torus = sum(filt_coords$y_to_bound)) %>%
+    mutate(x_short = pmin(x_trad, x_torus),
+           y_short = pmin(y_trad, y_torus)) %>% ## find shortest distances
+    select(x_short, y_short) %>%
+    `^`(2) %>% 
+    sum() %>%
+    sqrt() ## pythagorean!
+  
+  return(tibble(id1 = ids[1],
+                id2 = ids[2],
+                dist = filt_dist))
+}
+
+## now figure out how to iterate with map
+id_combos <- combn(test_coords$id, m = 2, simplify = FALSE)
+
+id_combos[,1]
+
+id_list <- as.list(id_combos)
+
+
+id_combos[1]
+
+map_df(id_combos[sample(1000, 5)], ~torus_pair_dist(coords = test_coords, ids = .x))
+
+
+## it works! but maybe save more diagnostic info...
+
+```
