@@ -7,6 +7,7 @@ output: html_notebook
 library(raster)
 library(tidyverse)
 library(ape)
+library(som.nn)
 ```
 
 This notebook is to document my exploration of modeling clustering and abundance of an environmental parasite and consequent host parasite burdens.
@@ -368,9 +369,9 @@ torus_pair_dist <- function(coords, ids){
 ## now figure out how to iterate with map
 id_combos <- combn(test_coords$id, m = 2, simplify = FALSE)
 
-id_combos[,1]
+#id_combos[,1]
 
-id_list <- as.list(id_combos)
+#id_list <- as.list(id_combos)
 
 
 id_combos[1]
@@ -380,4 +381,131 @@ map_df(id_combos[sample(1000, 5)], ~torus_pair_dist(coords = test_coords, ids = 
 
 ## it works! but maybe save more diagnostic info...
 
+```
+
+Next step, test and scale the function to calculate for every point pair on a torus. Maybe save the intermediate calculations to test?
+
+```{r}
+
+## first the function for just a pair distance
+torus_pair_dist <- function(coords, ids){
+  
+  ## Filter down to only two points and calc boundary distances
+  filt_coords <- coords %>%
+    filter(id %in% ids) %>%
+    mutate(x_to_l = abs(0 - x),
+           x_to_r = size - x,
+           y_to_t = abs(0 - y),
+           y_to_b = size - y,
+           x_to_bound = pmin(x_to_l, x_to_r),
+           y_to_bound = pmin(y_to_t, y_to_b))
+  
+  ## Find the x and y distances
+  filt_dists <- tibble(x_trad = abs(diff(filt_coords$x)),
+                      y_trad = abs(diff(filt_coords$y)),
+                      x_torus = sum(filt_coords$x_to_bound),
+                      y_torus = sum(filt_coords$y_to_bound)) %>%
+    mutate(x_short = pmin(x_trad, x_torus),
+           y_short = pmin(y_trad, y_torus)) ## find shortest distances
+    
+  filt_pythag <- filt_dists %>%
+    select(x_short, y_short) %>%
+    `^`(2) %>% 
+    sum() %>%
+    sqrt() ## pythagorean!
+  
+  return(cbind(tibble(id1 = ids[1],
+                      id2 = ids[2],
+                      dist = filt_pythag),
+               filt_dists))
+}
+
+test_calcs <- map_df(id_combos[sample(1000, 5)], ~torus_pair_dist(coords = test_coords, ids = .x))
+```
+
+The function seems to be working fine!
+
+Next, calculate for all points on a torus and then transform into a distance matrix...
+
+```{r}
+
+full_calcs <- map_df(id_combos, ~torus_pair_dist(coords = test_coords, ids = .x))
+## takes a while...
+
+torus_dist_m <- full_calcs %>%
+  select(id1, id2, dist) %>%
+  bind_rows(tibble(id1 = "1_1",
+                   id2 = id1,
+                   dist = NA),
+            .,
+            tibble(id1 = str_c(size, size, sep = "_"),
+                   id2 = id1,
+                   dist = NA)) %>%
+  pivot_wider(names_from = id2,
+              values_from = dist) %>%
+  column_to_rownames("id1") %>%
+  as.matrix()
+
+
+```
+
+Distance matrix complete! but now to mirror it, invert it, and calc Moran's I...
+
+```{r}
+
+## found this line from 
+## https://stackoverflow.com/questions/18165320/creating-a-symmetric-matrix-in-r
+## user3318600
+torus_dist_m[lower.tri(torus_dist_m)] <- t(torus_dist_m)[lower.tri(torus_dist_m)]
+
+torus_dist_inv <- 1/torus_dist_m
+
+diag(torus_dist_inv) <- 0
+
+moran_result <- Moran.I(test_coords$value, torus_dist_inv)
+moran_result
+
+moran_result <- Moran.I(test_coords$value, test_dists_inv)
+moran_result
+
+plot(raster(test_ls$matrix))
+```
+
+So it looks like spatial autocorrelation is slightly less positive in this case on a torus than on a edged square
+
+Checking available r function...
+
+```{r}
+
+avail_m <- as.matrix(dist.torus(cbind(test_coords$x, test_coords$y)))
+
+diag(avail_m) <- NA
+
+sum((avail_m == torus_dist_m) == FALSE, na.rm = TRUE)
+
+avail_m_inv <- 1 / avail_m
+diag(avail_m_inv) <- 0
+
+Moran.I(test_coords$value, avail_m_inv)
+```
+
+Checking how the availble R function works...
+
+```{r}
+
+coors <- data.frame(x = rep(1:4, each = 4), y = rep(1:4, 4))
+
+x <- coors[, 1]
+dx <- stats::dist(x, diag = TRUE, upper = TRUE)
+y <- coors[, 2]
+dy <- stats::dist(y, diag = TRUE, upper = TRUE)
+max.x <- max(dx) + 1
+max.y <- max(dy) + 1
+mdx <- max.x - dx
+mdy <- max.y - dy
+dx <- pmin(dx, mdx)
+dy <- pmin(dy, mdy)
+d <- sqrt(dx^2 + dy^2)
+
+d
 ```
