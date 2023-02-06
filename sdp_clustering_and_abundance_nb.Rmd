@@ -668,3 +668,5 @@ size_moran_test <- map_df(ls_list, function(x){
 ```
 
 Okay, that works. Now let's run this for a wide range of values on the desktop...
+
+Okay, now I'm on the desktop (can I push from here?)
