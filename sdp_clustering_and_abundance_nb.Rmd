@@ -1,6 +1,6 @@
 ---
 title: "sdp_clustering_and_abundance_notebook"
-output: html_notebook
+output: html
 ---
 
 ```{r}
@@ -15,6 +15,8 @@ This notebook is to document my exploration of modeling clustering and abundance
 ### Landscape Generation
 
 My first step was figuring out an algorithm to generate "parasite landscapes" with different levels of clustering (spatial autocorrelation as measured by Moran's I).
+
+#### Initial Algorithms
 
 My first algorithm follows. It makes a square landscape, and doesn't have customizable cluster numbers (i.e., at high clustering, only one cluster is present).
 
@@ -235,6 +237,8 @@ ls_percolator_moran <- function(size, potential_prop, cluster){
   return(landscape)
 }
 ```
+
+#### Torus Distances
 
 But based on Matt's comments in Aug 2022, since I simulate movement assuming a torus landscape, I need to measure spatial autocorrelation based on a torus.
 
@@ -489,7 +493,7 @@ diag(avail_m_inv) <- 0
 Moran.I(test_coords$value, avail_m_inv)
 ```
 
-Checking how the availble R function works...
+Checking how the available R function works...
 
 ```{r}
 
@@ -509,3 +513,158 @@ d <- sqrt(dx^2 + dy^2)
 
 d
 ```
+
+Well, the premade function is much faster, so I'll use that. Now to integrate it into the landscape generation function.
+
+#### Revised Algorithm
+
+Let's take the nicely commented function from above, then add the torus.dist function into the spatial autocorrelation calculation from the uncommented function.
+
+```{r}
+
+##
+# Basic Landscape Percolator Function 
+##
+
+#' Function inputs:
+#' size, as one dimension (e.g. 12 -> 12 x 12 grid)
+#' prop, proportion of landscape filled
+#' cluster, degree to which percolation is spatially correlated
+#' Requires:
+#' tidyverse
+#' som.nn
+#' ape
+
+ls_percolator <- function(size, prop, cluster){
+  ## Calculate number of cells to fill based on size and prop
+  potential <- floor((size^2) * prop)
+  ## Create empty data representing the landscape
+  coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2), # Weight starts equal for all cells
+                   value = rep(0, size^2)) # Cell type starts out as 0 for all
+  
+  ## Initialize the possible percolation locations
+  possibles <- coords$id
+  ## Percolate as many cells as need to be filled
+  for(p in seq_len(potential)){
+    
+    ## Pick a random cell (weighted by the "weight" column) to set as landscape value "1"
+    point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+    coords[coords$id %in% point, "value"] <- 1
+    
+    ## Create vectors of all cells with value 1 and 0
+    ones <- coords[coords$value == 1,]$id
+    zeroes <- coords[coords$value == 0,]$id
+    ## Loop through each cell with value 0
+    for(i in zeroes){
+      ## Save its cordinates as a vector of length 2
+      coords_i <- coords[coords$id %in% i, c("x", "y")]
+      ## Initialize its distances to cells with value 1
+      dists_i <- NULL
+      ## Loop through each cell with value 1
+      for(j in ones){
+        ## Save the jth 1 cell's coordinates as a vector of length 2
+        coords_j <- coords[coords$id %in% j, c("x", "y")]
+        ## Calculate the euclidean distance between the ith 0 cell and the jth 1 cell
+        dist_ij <- sqrt((coords_j$x - coords_i$x)^2 + (coords_j$y - coords_i$y)^2)
+        ## Add the ij distance to the list of distances for the ith 0 cell
+        dists_i <- c(dists_i, dist_ij)
+      }
+      ## Create an object that represents the inverse minimum distance between the ith 0 cell and a 1 cell
+      inv_dist <- 1/min(dists_i)
+      ## Update the weight for the ith 0 cell, accounting for the cluster factor as an exponent
+      coords[coords$id %in% i, "weight"] <- (1 + inv_dist)^cluster
+    }
+    
+    ## Refill the possible cells for percolation as only the remaining zeroes
+    possibles <- coords %>%
+      filter(value == 0) %>%
+      #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+      pull(id)
+    
+  }
+  
+  ## Create a distance matrix of each point assuming a torus shape
+  ls_dists <- as.matrix(som.nn::dist.torus(cbind(coords$x, coords$y)))
+  
+  ## Invert the distance matrix
+  ls_dists_inv <- 1/ls_dists
+  diag(ls_dists_inv) <- 0
+  
+  ## Calculate Moran's I spatial autocorrelation from the inverse distance matrix
+  moran_result <- Moran.I(coords$value, ls_dists_inv)
+  
+  ## Save the statistical output from the Moran test
+  ls_stats <- tibble(cluster = cluster, 
+                    moran = moran_result$observed, 
+                    p = moran_result$p.value)
+  
+  ## Save a list of the coordinates data frame, a landscape matrix, and the Moran stats
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = size, ncol = size),
+                    ls_stats = ls_stats)
+
+  ## Return that landscape list
+  return(landscape)
+}
+
+test_ls <- ls_percolator(12, 0.25, 0)
+
+plot(raster(test_ls$matrix))
+```
+
+#### Landscape Size and Moran
+
+Now, let's answer the question: how does the size of landscape influence the variance of Moran's I for a given clustering factor level?
+
+First, here's the iterated landscape gen code from my trial simulation script ("clustering_sim_wip.R")
+
+```{r}
+
+## Generate a bunch of landscapes
+
+cluster_values <- 0:100 / 10
+
+landscape_list <- map(cluster_values, 
+                      ~landscape_percolator(size = 12, potential_prop = 0.25, cluster = .x))
+```
+
+Probably need to use a map2 function to run on multiple lists (size and clustering)
+
+```{r}
+
+## make values to iterate over
+cluster_values <- c(0, 10)
+size_values <- c(4, 8)
+
+## make landscapes
+ls_list <- map2(.x = size_values, .y = cluster_values, 
+                ~ls_percolator(size = .x, prop = 0.25, cluster = .y))
+```
+
+Note: map2 doesn't cross every combination of vector elements, need to provide replicated elements
+
+```{r}
+
+## make values to iterate over
+cluster_values <- c(0, 0, 10, 10)
+size_values <- c(4, 8, 4, 8)
+
+## make landscapes
+ls_list <- map2(.x = size_values, .y = cluster_values, 
+                ~ls_percolator(size = .x, prop = 0.25, cluster = .y))
+
+x <- ls_list[1]
+x <- x[[1]]
+dat <- bind_cols(x$ls_stats, size = nrow(x$matrix))
+
+## now compare Moran to cluster between sizes
+size_moran_test <- map_df(ls_list, function(x){
+  dat <- bind_cols(x$ls_stats, size = nrow(x$matrix))
+})
+
+```
+
+Okay, that works. Now let's run this for a wide range of values on the desktop...
