@@ -95,7 +95,7 @@ fracland_mod <- function(k, h, p, binary = TRUE) {
 
 ##################################################
 
-plot(raster(fracland_mod(k = 4, h = 1, p = 0.3)))
+plot(raster(fracland_mod(k = 8, h = 0, p = 0.3)))
 
 ######
 

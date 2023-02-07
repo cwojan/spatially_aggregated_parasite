@@ -698,3 +698,5 @@ size_moran_test %>%
 ```
 
 I guess there might not be much of a relationship between size and moran variance...
+
+Errant thought: what if the ls_percolator didn't loop for each parasite point, just randomly placed the first one, and then placed everything after that?
