@@ -669,4 +669,32 @@ size_moran_test <- map_df(ls_list, function(x){
 
 Okay, that works. Now let's run this for a wide range of values on the desktop...
 
-Okay, now I'm on the desktop (can I push from here?)
+Okay, now I'm on the desktop (can I push from here? Yes!)
+
+Actually, why don't we first just try to check the variance for one cluster value with varying size...
+
+```{r}
+
+## make values to iterate over
+size_values <- rep(10:20, each = 10)
+
+## make landscapes
+ls_list <- map(.x = size_values, 
+                ~ls_percolator(size = .x, prop = 0.05, cluster = 100),
+               .progress = TRUE)
+
+size_moran_test <- map_df(ls_list, function(x){
+  dat <- bind_cols(x$ls_stats, size = nrow(x$matrix))
+})
+
+ggplot(size_moran_test) +
+  geom_jitter(aes(x = size, y = moran))
+
+cor.test(size_moran_test$size, size_moran_test$moran)
+
+size_moran_test %>%
+  group_by(size) %>%
+  summarize(sd(moran))
+```
+
+I guess there might not be much of a relationship between size and moran variance...
