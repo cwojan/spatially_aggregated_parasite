@@ -1070,3 +1070,201 @@ batch cluster 25 for rate 30
 ... I don't think a perfect ratio can be found, it may be best to let cluster and batch cluster freely vary.
 
 Also, my function can't do large landscapes (e.g. 256 x 256)
+
+I'm going to leave optimizing this further for now, but perhaps when revisiting it in the future I could constrain the possible cells for each batch to some number of the closest cells to the seed cell.
+
+#### Revisiting Movement Simulation
+
+First, let's look at the movement functions I made last summer from "clustering_sim_wip.R"
+
+```{r}
+move_host <- function(hid, host_data, moves, torus_helper, parasite_locs){
+  host_i <- filter(host_data, host_id %in% hid)
+  move_i <- filter(moves, move %in% sample(moves$move, size = 1))
+  host_i <- host_i %>%
+    mutate(
+      x = x + move_i$dx,
+      y = y + move_i$dy,
+      x = torus_helper %>% filter(raw %in% x) %>% pull(wrap),
+      y = torus_helper %>% filter(raw %in% y) %>% pull(wrap),
+      id = str_c(x, y, sep = "_"),
+      time = time + 1
+    )
+  if(host_i$id %in% parasite_locs){
+    host_i <- host_i %>%
+      mutate(parasites = parasites + rbinom(1, 1, 0.5))
+  }
+  return(host_i)
+}
+
+move_sim1 <- function(landscape, n_hosts, timesteps){
+  coords <- landscape$coords
+  parasite_locs <- filter(coords, value %in% 1) %>% pull(id)
+  
+  size <- max(coords$x)
+  
+  host_origins <- slice_sample(coords, n = n_hosts, replace = TRUE)
+  
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           parasites = 0,
+           time = 0)
+  
+  moves <- tibble(move = c("stay", "up", "left", "right", "down"),
+                  dx = c(0, 0, -1, 1, 0),
+                  dy = c(0, 1, 0, 0, -1))
+  
+  torus_helper <- tibble(raw = c(0, seq_len(size), size + 1),
+                         wrap = c(size, seq_len(size),1))
+  
+  for(t in (seq_len(timesteps) - 1)) {
+    hosts_t <- filter(hosts, time %in% t)
+    
+    hosts_tplus1 <- map_df(seq_len(n_hosts), move_host, host_data = hosts_t, 
+                           moves = moves, torus_helper = torus_helper,
+                           parasite_locs = parasite_locs)
+    
+    hosts <- bind_rows(hosts, hosts_tplus1)
+  }
+  
+  end_hosts <- filter(hosts, time %in% timesteps)
+  end_parasites <- pull(end_hosts, parasites)
+  
+  sim_data <- list(hosts = hosts,
+                   stats = cbind(landscape$ls_stats,
+                                 tibble(
+                                   mean = mean(end_parasites),
+                                   variance = var(end_parasites),
+                                   dispersion = variance / mean
+                   )))
+  
+  return(sim_data)
+}
+```
+
+Might need a complete rewrite for vectorizing...
+
+```{r}
+
+## set init coords
+host <- tibble(x = 9, y = 4, id = 1)
+
+## random moves
+xmoves <- sample(c(-1, 0, 1), size = 20, replace = TRUE)
+ymoves <- sample(c(-1, 0, 1), size = 20, replace = TRUE)
+
+## calculate x positions
+xpos <- cumsum(c(host$x, xmoves))
+
+## wrap around for torus
+xpos[xpos < 1] <- xpos[xpos < 1] + 10
+xpos[xpos > 10] <- xpos[xpos > 10] - 10
+
+## calculate x positions
+ypos <- cumsum(c(host$y, ymoves))
+
+## wrap around for torus
+ypos[ypos < 1] <- ypos[ypos < 1] + 10
+ypos[ypos > 10] <- ypos[ypos > 10] - 10
+
+xpos
+
+## added later... needs coords
+
+host <- host %>%
+  bind_rows(tibble(x = xpos, y = ypos))
+
+host_moved <- host %>%
+    bind_rows(tibble(x = xpos,
+                     y = ypos,
+                     time = 1:21)) %>%
+    mutate(id = str_c(x, y, sep = "_")) %>% ## generate ids
+    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.75),
+           parasite_burden = cumsum(parasite_gain))
+
+length(cumsum(host_moved$parasite_gain))
+
+host_moved <- tibble(x = xpos,
+                       y = ypos,
+                       time = 0:20) %>%
+    mutate(id = str_c(x, y, sep = "_")) %>% ## generate ids
+    left_join(select(coords, id, value), by = "id") ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
+           parasite_burden = cumsum(parasite_gain)) ## attach parasites
+
+
+```
+
+Okay, so that code essentially vectorizes movement, but how do I scale it up?
+
+```{r}
+
+## first, let's make a landscape coords tibble with random parasites
+size <- 12
+coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2), # Weight starts equal for all cells
+                   value = rbinom(n = size^2, size = 1, p = 0.25))
+
+
+## then let's generate starting positions for hosts
+## from move_sim1:
+n_hosts <- 24
+host_origins <- slice_sample(coords, n = n_hosts, replace = TRUE)
+  
+hosts <- host_origins %>%
+  select(x, y, id) %>%
+  mutate(host_id = seq_len(nrow(host_origins)),
+         parasites = 0,
+         time = 0)
+
+## i think next would be a function that takes one host, moves it, then checks for parasites
+
+move_host <- function(hid, hosts, coords, nmoves){
+  ## grab host
+  host_start <- filter(hosts, host_id %in% hid)
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## random moves
+  xmoves <- sample(c(-1, 0, 1), size = nmoves, replace = TRUE)
+  ymoves <- sample(c(-1, 0, 1), size = nmoves, replace = TRUE)
+  
+  ## calculate x positions
+  xpos <- cumsum(c(host_start$x, xmoves))
+  ## wrap around for torus
+  xpos[xpos < 1] <- xpos[xpos < 1] + max_x
+  xpos[xpos > max_x] <- xpos[xpos > max_x] - max_x
+  
+  ## calculate y positions
+  ypos <- cumsum(c(host_start$y, ymoves))
+  ## wrap around for torus
+  ypos[ypos < 1] <- ypos[ypos < 1] + max_y
+  ypos[ypos > max_y] <- ypos[ypos > max_y] - max_y
+  
+  ## add positions to data
+  host_moved <- tibble(host_id = hid,
+                       x = xpos,
+                       y = ypos,
+                       time = 0:nmoves) %>%
+    mutate(id = str_c(x, y, sep = "_")) %>% ## generate ids
+    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
+           parasite_burden = cumsum(parasite_gain)) ## attach parasites
+  
+  ## return sim data
+  return(host_moved)
+}
+
+test_host <- move_host(hid = 1, hosts = hosts, coords = coords, nmoves = 20)
+
+test_hosts <- map_df(1:24, ~move_host(hid = .x, hosts = hosts, coords = coords, nmoves =  1000))
+
+```
+
+Works great! Maybe a matrix based implementation as opposed to a functional implementation would be faster, but this is plenty fast
