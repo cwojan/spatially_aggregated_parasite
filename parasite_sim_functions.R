@@ -1,0 +1,172 @@
+##
+#' file: parasite_sim_functions
+#' description: a set of function to simulate accumulation of environmental 
+#' parasite burdens
+#' author: chris wojan
+#' date: 2022/02/15
+##
+
+#####
+# Basic Fast Landscape Percolator Function 
+##
+
+#' Function inputs:
+#' size, as one dimension (e.g. 12 -> 12 x 12 grid)
+#' prop, proportion of landscape filled
+#' cluster, degree to which percolation is spatially correlated
+#' Requires:
+#' tidyverse
+#' som.nn
+#' ape
+
+fast_ls_perc <- function(size, prop, cluster){
+  ## Calculate number of cells to fill based on size and prop
+  potential <- floor((size^2) * prop)
+  ## Create empty data representing the landscape
+  coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2), # Weight starts equal for all cells
+                   value = rep(0, size^2)) # Cell type starts out as 0 for all
+  
+  ## Initialize the possible percolation locations
+  possibles <- coords$id
+  ## Percolate as many cells as need to be filled
+  for(p in seq_len(potential)){
+    
+    ## Pick a random cell (weighted by the "weight" column) to set as landscape value "1"
+    point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+    coords[coords$id %in% point, "value"] <- 1
+    
+    ## Record current ones
+    ones <- coords$value == 1
+    
+    ## Make an inverse distance matrix of all points
+    inv_dists <- 1/as.matrix(dist(cbind(coords$x, coords$y)))
+    ## Remove Inf values
+    diag(inv_dists) <- 0
+    
+    ## Select only the columns of points with 1 as their value
+    inv_dists_filt <- as.matrix(inv_dists[,ones])
+    
+    ## Assign the weights as each point's nearest distance to a 1 
+    coords$weight <- map_dbl(1:nrow(inv_dists_filt), 
+                             function(x){
+                               (1 + max(inv_dists_filt[x,]))^cluster
+                             })
+    
+    ## Refill the possible cells for percolation as only the remaining zeroes
+    possibles <- coords %>%
+      filter(value == 0) %>%
+      #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+      pull(id)
+    
+  }
+  
+  ## Create a distance matrix of each point assuming a torus shape
+  ls_dists <- as.matrix(som.nn::dist.torus(cbind(coords$x, coords$y)))
+  
+  ## Invert the distance matrix
+  ls_dists_inv <- 1/ls_dists
+  diag(ls_dists_inv) <- 0
+  
+  ## Calculate Moran's I spatial autocorrelation from the inverse distance matrix
+  moran_result <- Moran.I(coords$value, ls_dists_inv)
+  
+  ## Save the statistical output from the Moran test
+  ls_stats <- tibble(size = size,
+                     prop = prop,
+                     cluster = cluster, 
+                     moran = moran_result$observed, 
+                     p = moran_result$p.value)
+  
+  ## Save a list of the coordinates data frame, a landscape matrix, and the Moran stats
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = size, ncol = size),
+                    ls_stats = ls_stats)
+  
+  ## Return that landscape list
+  return(landscape)
+}
+
+
+#####
+# Host Movement Function
+##
+
+#' Function inputs:
+#' hid, id of the host
+#' hosts, data frame of host info
+#' coords, coords of the landscape
+#' n_moves, number of timesteps
+#' Requires:
+#' tidyverse
+
+move_host <- function(hid, hosts, coords, n_moves){
+  ## grab host
+  host_start <- filter(hosts, host_id %in% hid)
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## random moves
+  xmoves <- sample(c(-1, 0, 1), size = n_moves, replace = TRUE)
+  ymoves <- sample(c(-1, 0, 1), size = n_moves, replace = TRUE)
+  
+  ## calculate x positions
+  xpos <- cumsum(c(host_start$x, xmoves))
+  
+  ## calculate y positions
+  ypos <- cumsum(c(host_start$y, ymoves))
+  
+  ## add positions to data
+  host_moved <- tibble(host_id = hid,
+                       xmove = c(NA, xmoves),
+                       ymove = c(NA, ymoves),
+                       pre_x = xpos,
+                       pre_y = ypos,
+                       time = 0:n_moves) %>%
+    mutate(oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")) %>% ## generate ids
+    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
+           parasite_burden = cumsum(parasite_gain)) ## attach parasites
+  
+  ## return sim data
+  return(host_moved)
+}
+
+
+#####
+# Environmental Parasite Burden Simulator Function
+##
+
+#' Function inputs:
+#' landscape, a list including the coordinates and Moran output
+#' nhosts, how many hosts
+#' nmoves, how many timesteps
+#' Requires:
+#' tidyverse
+
+parasite_sim <- function(landscape, n_hosts, n_moves){
+  
+  ## Set random starting positions for each host
+  host_origins <- slice_sample(landscape$coords, n = n_hosts, replace = TRUE)
+  
+  ## Create host data frame
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           time = 0)
+  
+  ## Simulate movement and parasite gain
+  hosts_moved <- map_df(seq_len(n_hosts), ~move_host(hid = .x, hosts = hosts, coords = landscape$coords, n_moves = n_moves))
+  
+  ## Package and return host and landscape info
+  out <- bind_cols(hosts_moved, landscape$ls_stats)
+  return(out)
+}
