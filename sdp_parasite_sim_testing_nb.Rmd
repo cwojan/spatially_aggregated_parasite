@@ -53,3 +53,120 @@ ggplot(data = test_summary) +
 ```
 
 Looks like the variance among simulations doesn't decline with timesteps, but the dispersion does level off maybe around 200 timesteps?
+
+But does that level off happen similarly for other clustering factors?
+
+```{r}
+test_ls <- fast_ls_perc(size = 24, prop = 0.2, cluster = 20)
+
+## now many
+test_sims <- replicate(10, 
+                       parasite_sim(landscape = test_ls, n_hosts = 48, n_moves = 1000),
+                       simplify = FALSE)
+
+## make df with id
+test_sims_df <- bind_rows(test_sims, .id = "sim_id")
+
+## summarize by simulation and timepoint
+test_summary <- test_sims_df %>%
+  group_by(sim_id, time) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden)
+
+## plot summary stat by time
+ggplot(data = test_summary) +
+  geom_line(aes(x = time, y = disp_burden))
+```
+
+The level off point increases with clustering. Select an end point that for the max clustering used. Let's go with 300 for cluster = 20.
+
+That means we want a trimmed movement sim function
+
+#### Trimming Movement Simulation
+
+Setting the movement function to only output the last timestep info
+
+```{r}
+
+#####
+# Host Movement Function
+##
+
+#' Function inputs:
+#' hid, id of the host
+#' hosts, data frame of host info
+#' coords, coords of the landscape
+#' n_moves, number of timesteps
+#' Requires:
+#' tidyverse
+
+move_host <- function(hid, hosts, coords, n_moves){
+  ## grab host
+  host_start <- filter(hosts, host_id %in% hid)
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## random moves
+  xmoves <- sample(c(-1, 0, 1), size = n_moves, replace = TRUE)
+  ymoves <- sample(c(-1, 0, 1), size = n_moves, replace = TRUE)
+  
+  ## calculate x positions
+  xpos <- cumsum(c(host_start$x, xmoves))
+  
+  ## calculate y positions
+  ypos <- cumsum(c(host_start$y, ymoves))
+  
+  ## add positions to data
+  host_moved <- tibble(host_id = hid,
+                       xmove = c(NA, xmoves),
+                       ymove = c(NA, ymoves),
+                       pre_x = xpos,
+                       pre_y = ypos,
+                       time = 0:n_moves) %>%
+    mutate(oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")) %>% ## generate ids
+    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
+           parasite_burden = cumsum(parasite_gain)) %>% ## attach parasites
+    filter(time == n_moves)
+  
+  ## return sim data
+  return(host_moved)
+}
+```
+
+Now testing it:
+
+```{r}
+
+test_sims <- replicate(10, 
+                       parasite_sim(landscape = test_ls, n_hosts = 48, n_moves = 300),
+                       simplify = FALSE)
+
+test_sims_df <- bind_rows(test_sims, .id = "sim_id")
+```
+
+Works!
+
+#### Generating Landscapes
+
+Now lets make a bunch a varied landscapes:
+
+```{r}
+
+props <- rep(seq(1, 7, 2) / 10, 5)
+clusters <- rep(seq(0, 20, 5), each = 4)
+
+ls_list <- map2(
+  .x = props,
+  .y = clusters,
+  ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+  .progress = TRUE
+)
+```
