@@ -1,0 +1,55 @@
+---
+title: "sdp_parasite_sim_testing_nb"
+output: html_document
+---
+
+### Parasite Simulation Testing
+
+First, source the functions:
+
+```{r}
+library(tidyverse)
+library(som.nn)
+library(ape)
+source("parasite_sim_functions.R")
+```
+
+#### Testing Variance of Outcomes on the Same Landscape
+
+Now, how does the variance of characteristics of a population's parasite burden distribution change with number of timesteps?
+
+First, generate a landscape:
+
+```{r}
+test_ls <- fast_ls_perc(size = 24, prop = 0.2, cluster = 15)
+```
+
+Then run a parasite simulation on it many times
+
+```{r}
+
+## just one
+test_sim <- parasite_sim(landscape = test_ls, n_hosts = 48, n_moves = 1000)
+
+## now many
+test_sims <- replicate(10, 
+                       parasite_sim(landscape = test_ls, n_hosts = 48, n_moves = 1000),
+                       simplify = FALSE)
+
+## make df with id
+test_sims_df <- bind_rows(test_sims, .id = "sim_id")
+
+## summarize by simulation and timepoint
+test_summary <- test_sims_df %>%
+  group_by(sim_id, time) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden)
+
+## plot summary stat by time
+ggplot(data = test_summary) +
+  geom_line(aes(x = time, y = disp_burden))
+
+```
+
+Looks like the variance among simulations doesn't decline with timesteps, but the dispersion does level off maybe around 200 timesteps?

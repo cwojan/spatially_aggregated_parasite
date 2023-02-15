@@ -6,6 +6,10 @@
 #' date: 2022/02/15
 ##
 
+library(tidyverse)
+library(som.nn)
+library(ape)
+
 #####
 # Basic Fast Landscape Percolator Function 
 ##

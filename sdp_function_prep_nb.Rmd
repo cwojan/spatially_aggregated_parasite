@@ -1073,7 +1073,7 @@ Also, my function can't do large landscapes (e.g. 256 x 256)
 
 I'm going to leave optimizing this further for now, but perhaps when revisiting it in the future I could constrain the possible cells for each batch to some number of the closest cells to the seed cell.
 
-#### Revisiting Movement Simulation
+### Revisiting Movement Simulation
 
 First, let's look at the movement functions I made last summer from "clustering_sim_wip.R"
 
@@ -1271,7 +1271,7 @@ range(test_hosts$y)
 
 Works great! Maybe a matrix based implementation as opposed to a functional implementation would be faster, but this is plenty fast
 
-#### Setting up the Simulation
+### Setting up the Simulation
 
 Now set up functions to run through a list of landscapes
 
