@@ -291,7 +291,7 @@ generate_landscape <- function(size = 24, c_factor = 1, potential_prop = 0.25){
 plot(raster(generate_landscape(24, 1, 0.25)))
 
 walk(c(1,2,3,4,6,12), function(x){
-  plot(raster(generate_landscape(c_factor = x, potential_prop = 0.25)))})
+  plot(raster(generate_landscape(c_factor = x, potential_prop = 0.01)))})
 
 walk(c(1,2,3,4,6,12), function(x){
   plot(raster(generate_landscape(c_factor = x, potential_prop = 0.5)))})
