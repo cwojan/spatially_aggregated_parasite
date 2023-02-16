@@ -248,3 +248,45 @@ ggsave(filename = str_c("sim_output/temp_ls_plots_",
 ```
 
 Perfect!
+
+#### Test Simulations
+
+Now let's try simulating some hosts on these landscapes
+
+```{r}
+
+test_sim <- parasite_sim(ls_list[[1]], n_hosts = 96, n_moves = 300)
+
+test_sims <- map_df(ls_list,
+                    function(x){
+                      replicate(10, parasite_sim(x, n_hosts = 96, n_moves = 300),
+                                simplify = FALSE)
+                    },
+                    .id = "sim_id",
+                    .progress = TRUE)
+
+test_summary <- test_sims %>%
+  group_by(sim_id) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  left_join(select(test_sims, prop, moran, sim_id) %>% unique(), 
+            by = "sim_id")
+
+ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_color_viridis_d() +
+  theme_bw()
+
+test_lm <- lm(disp_burden ~ prop*moran, data = test_summary)
+summary(test_lm)
+
+
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(test_sims, str_c("sim_output/test_sims_", 
+                         timestamp,
+                         ".rds"))
+```
