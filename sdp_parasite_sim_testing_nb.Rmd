@@ -169,4 +169,82 @@ ls_list <- map2(
   ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
   .progress = TRUE
 )
+
+write_rds(ls_list, str_c("sim_output/temp_ls_list_", 
+                         ,
+                         ".rds"))
 ```
+
+We can plot them all too
+
+```{r}
+
+ls_list_coords <- map_df(ls_list,
+                         function(x){
+                           bind_cols(x$coords, x$ls_stats)
+                         },
+                         .id = "ls_id")
+
+ls_plots <- ggplot(data = ls_list_coords) +
+  geom_tile(aes(x = x, y = y, fill = factor(value))) +
+  scale_fill_manual(values = c("white", "darkgreen")) +
+  facet_grid(rows = vars(cluster), cols = vars(prop)) +
+  theme_bw()
+
+ls_plots
+
+## save a timestamp
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(ls_list, str_c("sim_output/temp_ls_list_", 
+                         timestamp,
+                         ".rds"))
+
+ggsave(filename = str_c("sim_output/temp_ls_plots_", 
+                         timestamp,
+                         ".png"), plot = ls_plots)
+
+```
+
+Actually, I don't much like the range of that. Going to edit the parameter space
+
+```{r}
+
+props <- rep(seq(1, 5, 1) / 10, 4)
+clusters <- rep(seq(0, 15, 5), each = 5)
+
+ls_list <- map2(
+  .x = props,
+  .y = clusters,
+  ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+  .progress = TRUE
+)
+
+ls_list_coords <- map_df(ls_list,
+                         function(x){
+                           bind_cols(x$coords, x$ls_stats)
+                         },
+                         .id = "ls_id")
+
+ls_plots <- ggplot(data = ls_list_coords) +
+  geom_tile(aes(x = x, y = y, fill = factor(value))) +
+  scale_fill_manual(values = c("white", "darkgreen")) +
+  facet_grid(rows = vars(cluster), cols = vars(prop)) +
+  theme_bw()
+
+ls_plots
+
+## save a timestamp
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(ls_list, str_c("sim_output/temp_ls_list_", 
+                         timestamp,
+                         ".rds"))
+
+ggsave(filename = str_c("sim_output/temp_ls_plots_", 
+                         timestamp,
+                         ".png"), plot = ls_plots)
+
+```
+
+Perfect!
