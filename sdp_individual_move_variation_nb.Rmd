@@ -286,6 +286,9 @@ Now minor edits to function for replication, no diagonal movement
 ```{r}
 move_host_fast <- function(hosts, coords, n_moves, n_reps){
   
+  ## save number of hosts
+  n_hosts <- nrow(hosts) / n_reps
+  
   ## grab landscape size for torus wrap
   max_x <- max(coords$x)
   max_y <- max(coords$y)
@@ -458,4 +461,42 @@ length(rep(0:n_moves, n_hosts * n_reps))
 
 test_sims <- parasite_sim(landscape = test_ls, n_hosts = 96, n_moves = 300,
                           n_reps = 2, movetypes = c(0.2), moveprops = c(1))
+```
+
+parasite_sim should take a tibble of movetypes for better iteration
+
+```{r}
+
+movetypes <- tibble(type = c(0.2, 0.1), prop = c(0.9, 0.1))
+
+n_hosts <- 10
+rep(movetypes$type, movetypes$prop * n_hosts)
+
+parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1, 
+                         movetypes = tibble(type = 0.2, prop = 1)){
+  
+  ## Set random starting positions for each host
+  host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
+  
+  ## Create host data frame
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           time = 0,
+           rep_id = rep(seq_len(n_reps), each = n_hosts),
+           inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
+  
+  ## Simulate movement and parasite gain
+  hosts_moved <- move_host_fast(hosts = hosts, coords = coords, 
+                                n_moves = n_moves, n_reps = n_reps)
+  
+  ## Package and return host and landscape info
+  out <- bind_cols(hosts_moved, landscape$ls_stats) %>%
+    filter(time == n_moves)
+  return(out)
+}
+
+rm(n_hosts)
+test_sims <- parasite_sim(landscape = test_ls, n_hosts = 96, n_moves = 300,
+                          n_reps = 2, movetypes = tibble(type = 0.2, prop = 1))
 ```
