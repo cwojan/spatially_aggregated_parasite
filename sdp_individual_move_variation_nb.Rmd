@@ -279,6 +279,183 @@ Sys.time()
 
 ```
 
+Very fast!
+
+Now minor edits to function for replication, no diagonal movement
+
+```{r}
+move_host_fast <- function(hosts, coords, n_moves, n_reps){
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## set up moves to sample from
+  moveset <- tibble(
+      move_id = 1:5,
+      xmove = c(0, 0, 0, -1, 1),
+      ymove = c(0, -1, 1, 0, 0)
+      )
+  
+  hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
+    mutate(time = rep(0:n_moves, n_hosts * n_reps),
+           active = inactivity * runif(n()) >= inactivity^2,
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>%
+    left_join(moveset, by = "move_id") %>%
+    mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
+           ymove = if_else(time == 0, y, as.integer(ymove))) %>%
+    group_by(rep_id, host_id) %>%
+    mutate(pre_x = cumsum(xmove),
+           pre_y = cumsum(ymove),
+           oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")
+           ) %>%
+    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
+           parasite_burden = cumsum(parasite_gain)) ## attach parasites
+
+    return(hosts_moving)
+}
+```
+
 #### Revise Sim Function
 
 Now, allow the simulation function to pass inactivity values
+
+```{r}
+n_hosts <- 10
+movetypes <- c(0.2, 0.1)
+moveprops <- c(0.9, 0.1)
+move_n <- n_hosts * moveprops
+
+n_reps = 2
+## Set random starting positions for each host
+  host_origins <- slice_sample(coords, n = n_hosts * n_reps, replace = TRUE)
+  
+  ## Create host data frame
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = rep(seq_len(n_hosts), n_reps),
+           time = 0,
+           rep_id = rep(seq_len(n_reps), each = n_hosts),
+           inactivity = rep(rep(movetypes, moveprops * n_hosts), n_reps))
+
+  
+move_host_fast(hosts = hosts, coords = coords, n_moves = 100, n_reps = 2)
+  
+parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1, 
+                         movetypes = c(0.2), moveprops = c(1)){
+  
+  ## Set random starting positions for each host
+  host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
+  
+  ## Create host data frame
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           time = 0,
+           rep_id = rep(seq_len(n_reps), each = n_hosts),
+           inactivity = rep(rep(movetypes, moveprops * n_hosts), n_reps))
+  
+  ## Simulate movement and parasite gain
+  hosts_moved <- move_host_fast(hosts = hosts, coords = coords, 
+                                n_moves = n_moves, n_reps = n_reps)
+  
+  ## Package and return host and landscape info
+  out <- bind_cols(hosts_moved, landscape$ls_stats) %>%
+    filter(time == n_moves)
+  return(out)
+}
+```
+
+That should work! Now make a test landscape
+
+```{r}
+fast_ls_perc <- function(size, prop, cluster){
+  ## Calculate number of cells to fill based on size and prop
+  potential <- floor((size^2) * prop)
+  ## Create empty data representing the landscape
+  coords <- tibble(x = rep(1:size, size), 
+                   y = rep(1:size, each = size),
+                   id = str_c(x, y, sep = "_"),
+                   weight = rep(1, size^2), # Weight starts equal for all cells
+                   value = rep(0, size^2)) # Cell type starts out as 0 for all
+  
+  ## Initialize the possible percolation locations
+  possibles <- coords$id
+  ## Percolate as many cells as need to be filled
+  for(p in seq_len(potential)){
+    
+    ## Pick a random cell (weighted by the "weight" column) to set as landscape value "1"
+    point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
+    coords[coords$id %in% point, "value"] <- 1
+    
+    ## Record current ones
+    ones <- coords$value == 1
+    
+    ## Make an inverse distance matrix of all points
+    inv_dists <- 1/as.matrix(dist(cbind(coords$x, coords$y)))
+    ## Remove Inf values
+    diag(inv_dists) <- 0
+    
+    ## Select only the columns of points with 1 as their value
+    inv_dists_filt <- as.matrix(inv_dists[,ones])
+    
+    ## Assign the weights as each point's nearest distance to a 1 
+    coords$weight <- map_dbl(1:nrow(inv_dists_filt), 
+                             function(x){
+                               (1 + max(inv_dists_filt[x,]))^cluster
+                             })
+    
+    ## Refill the possible cells for percolation as only the remaining zeroes
+    possibles <- coords %>%
+      filter(value == 0) %>%
+      #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
+      pull(id)
+    
+  }
+  
+  ## Create a distance matrix of each point assuming a torus shape
+  ls_dists <- as.matrix(som.nn::dist.torus(cbind(coords$x, coords$y)))
+  
+  ## Invert the distance matrix
+  ls_dists_inv <- 1/ls_dists
+  diag(ls_dists_inv) <- 0
+  
+  ## Calculate Moran's I spatial autocorrelation from the inverse distance matrix
+  moran_result <- Moran.I(coords$value, ls_dists_inv)
+  
+  ## Save the statistical output from the Moran test
+  ls_stats <- tibble(size = size,
+                     prop = prop,
+                     cluster = cluster, 
+                     moran = moran_result$observed, 
+                     p = moran_result$p.value)
+  
+  ## Save a list of the coordinates data frame, a landscape matrix, and the Moran stats
+  landscape <- list(coords = coords, 
+                    matrix = matrix(coords$value, nrow = size, ncol = size),
+                    ls_stats = ls_stats)
+  
+  ## Return that landscape list
+  return(landscape)
+}
+
+test_ls <- fast_ls_perc(48, prop = 0.2, cluster = 5)
+
+```
+
+And then test the parasite sim
+
+```{r}
+n_moves = 300
+n_hosts = 96
+n_reps = 2
+length(rep(0:n_moves, n_hosts * n_reps))
+
+test_sims <- parasite_sim(landscape = test_ls, n_hosts = 96, n_moves = 300,
+                          n_reps = 2, movetypes = c(0.2), moveprops = c(1))
+```
