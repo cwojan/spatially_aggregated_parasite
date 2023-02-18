@@ -487,16 +487,33 @@ parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1,
            inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
   
   ## Simulate movement and parasite gain
-  hosts_moved <- move_host_fast(hosts = hosts, coords = coords, 
+  hosts_moved <- move_host_fast(hosts = hosts, coords = landscape$coords, 
                                 n_moves = n_moves, n_reps = n_reps)
   
   ## Package and return host and landscape info
-  out <- bind_cols(hosts_moved, landscape$ls_stats) %>%
-    filter(time == n_moves)
+  out <- bind_cols(hosts_moved, landscape$ls_stats)
   return(out)
 }
 
 rm(n_hosts)
 test_sims <- parasite_sim(landscape = test_ls, n_hosts = 96, n_moves = 300,
-                          n_reps = 2, movetypes = tibble(type = 0.2, prop = 1))
+                          n_reps = 1, movetypes = tibble(type = 0.2, prop = 1))
+
+
+```
+
+#### Animate a Sim
+
+```{r}
+library(gganimate)
+library(gifski)
+
+ggplot(data = test_sims) +
+  geom_tile(data = test_ls$coords, aes(x = x, y = y, fill = factor(value))) +
+  scale_fill_manual(values = c("white", "lightgreen")) +
+  geom_point(aes(x = x, y = y), alpha = 0.5) +
+  transition_time(time) +
+  ease_aes('linear') +
+  labs(title = "Timestep: {frame_time}") +
+  theme_minimal()
 ```
