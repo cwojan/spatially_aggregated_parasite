@@ -1,0 +1,20 @@
+---
+title: "sdp_parasite_sim_testing_p2_nb"
+output: html_document
+---
+
+---
+title: "sdp_parasite_sim_testing_p1_nb"
+output: html_document
+---
+
+### Parasite Simulation Testing Part 1
+
+First, source the functions:
+
+```{r}
+library(tidyverse)
+library(som.nn)
+library(ape)
+source("parasite_sim_functions.R")
+```
