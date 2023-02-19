@@ -1,9 +1,9 @@
 ---
-title: "sdp_parasite_sim_testing_nb"
+title: "sdp_parasite_sim_testing_p1_nb"
 output: html_document
 ---
 
-### Parasite Simulation Testing
+### Parasite Simulation Testing Part 1
 
 First, source the functions:
 

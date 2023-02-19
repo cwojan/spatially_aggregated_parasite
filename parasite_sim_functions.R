@@ -3,7 +3,15 @@
 #' description: a set of function to simulate accumulation of environmental 
 #' parasite burdens
 #' author: chris wojan
-#' date: 2022/02/15
+#' date created: 2022/02/15
+##
+
+##
+#' update 20230219
+#' host movement and parasite sim functions fully vectorized
+#' diagonal movement no longer possible
+#' can account for individual variation in movement tendency
+#' updated functions sourced from "sdp_individual_move_variation_nb.rmd"
 ##
 
 library(tidyverse)
@@ -99,49 +107,50 @@ fast_ls_perc <- function(size, prop, cluster){
 ##
 
 #' Function inputs:
-#' hid, id of the host
-#' hosts, data frame of host info
+#' hosts, data frame of host info (x, y, id, inactivity)
 #' coords, coords of the landscape
 #' n_moves, number of timesteps
+#' n_reps, number of replicates
 #' Requires:
 #' tidyverse
 
-move_host <- function(hid, hosts, coords, n_moves){
-  ## grab host
-  host_start <- filter(hosts, host_id %in% hid)
+move_host_fast <- function(hosts, coords, n_moves, n_reps){
+  
+  ## save number of hosts
+  n_hosts <- nrow(hosts) / n_reps
   
   ## grab landscape size for torus wrap
   max_x <- max(coords$x)
   max_y <- max(coords$y)
   
-  ## random moves
-  xmoves <- sample(c(-1, 0, 1), size = n_moves, replace = TRUE)
-  ymoves <- sample(c(-1, 0, 1), size = n_moves, replace = TRUE)
+  ## set up moves to sample from
+  moveset <- tibble(
+    move_id = 1:5,
+    xmove = c(0, 0, 0, -1, 1),
+    ymove = c(0, -1, 1, 0, 0)
+  )
   
-  ## calculate x positions
-  xpos <- cumsum(c(host_start$x, xmoves))
-  
-  ## calculate y positions
-  ypos <- cumsum(c(host_start$y, ymoves))
-  
-  ## add positions to data
-  host_moved <- tibble(host_id = hid,
-                       xmove = c(NA, xmoves),
-                       ymove = c(NA, ymoves),
-                       pre_x = xpos,
-                       pre_y = ypos,
-                       time = 0:n_moves) %>%
-    mutate(oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+  hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
+    mutate(time = rep(0:n_moves, n_hosts * n_reps),
+           active = inactivity * runif(n()) >= inactivity^2,
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>%
+    left_join(moveset, by = "move_id") %>%
+    mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
+           ymove = if_else(time == 0, y, as.integer(ymove))) %>%
+    group_by(rep_id, host_id) %>%
+    mutate(pre_x = cumsum(xmove),
+           pre_y = cumsum(ymove),
+           oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
            oob_y = (pre_y - 1) %/% max_y,
            x = pre_x - (max_x * oob_x), ## wrap around torus
            y = pre_y - (max_y * oob_y),
-           id = str_c(x, y, sep = "_")) %>% ## generate ids
+           id = str_c(x, y, sep = "_")
+    ) %>%
     left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
     mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
            parasite_burden = cumsum(parasite_gain)) ## attach parasites
   
-  ## return sim data
-  return(host_moved)
+  return(hosts_moving)
 }
 
 
@@ -151,24 +160,30 @@ move_host <- function(hid, hosts, coords, n_moves){
 
 #' Function inputs:
 #' landscape, a list including the coordinates and Moran output
-#' nhosts, how many hosts
-#' nmoves, how many timesteps
+#' n_hosts, how many hosts
+#' n_moves, how many timesteps
+#' n_reps, how many replicates per landscape
+#' movetypes, 2 column tibble specifying movement tendencies and pop. proportions
 #' Requires:
 #' tidyverse
 
-parasite_sim <- function(landscape, n_hosts, n_moves){
+parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1, 
+                         movetypes = tibble(type = 0.2, prop = 1)){
   
   ## Set random starting positions for each host
-  host_origins <- slice_sample(landscape$coords, n = n_hosts, replace = TRUE)
+  host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
   
   ## Create host data frame
   hosts <- host_origins %>%
     select(x, y, id) %>%
     mutate(host_id = seq_len(nrow(host_origins)),
-           time = 0)
+           time = 0,
+           rep_id = rep(seq_len(n_reps), each = n_hosts),
+           inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
   
   ## Simulate movement and parasite gain
-  hosts_moved <- map_df(seq_len(n_hosts), ~move_host(hid = .x, hosts = hosts, coords = landscape$coords, n_moves = n_moves))
+  hosts_moved <- move_host_fast(hosts = hosts, coords = landscape$coords, 
+                                n_moves = n_moves, n_reps = n_reps)
   
   ## Package and return host and landscape info
   out <- bind_cols(hosts_moved, landscape$ls_stats)
