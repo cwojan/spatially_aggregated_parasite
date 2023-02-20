@@ -115,7 +115,7 @@ ggsave(filename = str_c("sim_output/temp_iv_plot_",
                          timestamp,
                          ".png"), plot = iv_plot, width = 10, height = 6, units = "in")
 
-## summarize by individual
+## summarize by inacitivity
 ind_summary <- test_sims_iv %>%
   filter(time == 300) %>%
   group_by(sim_id, rep_id, inactivity) %>%
@@ -140,8 +140,21 @@ timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
 ggsave(filename = str_c("sim_output/temp_ind_plot_", 
                          timestamp,
                          ".png"), plot = ind_plot, width = 12, height = 6, units = "in")
-  
 
+## summarize by time and inactivity
+time_summary <- test_sims_iv %>%
+  group_by(inactivity, time) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden)
+
+ggplot(data = time_summary, aes(x = time, y = mean_burden, color = factor(inactivity))) +
+  geom_point() +
+  scale_color_viridis_d(option = "turbo") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+  
+time_summary %>% filter(time == 300)
 ```
 
 #### Plotting Landscapes
