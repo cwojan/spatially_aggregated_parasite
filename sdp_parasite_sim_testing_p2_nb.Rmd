@@ -16,6 +16,9 @@ First, source the functions:
 library(tidyverse)
 library(som.nn)
 library(ape)
+library(gganimate)
+library(gifski)
+library(transformr)
 source("parasite_sim_functions.R")
 ```
 
@@ -47,11 +50,19 @@ test_summary <- test_sims %>%
   left_join(select(test_sims, prop, moran, sim_id) %>% unique(), 
             by = "sim_id")
 
-ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
+sim_plot <- ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
-  scale_color_viridis_d() +
-  theme_bw()
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Dispersion") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/temp_sim_plot_", 
+                         timestamp,
+                         ".png"), plot = sim_plot, width = 8, height = 6, units = "in")
 
 ```
 
@@ -60,7 +71,7 @@ ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop)
 What if individual movement tendencies vary?
 
 ```{r}
-test_sims <- map_df(ls_list, 
+test_sims_iv <- map_df(ls_list, 
                     ~parasite_sim(.x, n_hosts = 96, 
                                   n_moves = 300, n_reps = 10,
                                   movetypes = tibble(type = c(0.1, 0.3, 0.5, 0.7),
@@ -69,7 +80,7 @@ test_sims <- map_df(ls_list,
                     .progress = TRUE)
 
 
-test_summary <- test_sims %>%
+test_summary_iv <- test_sims_iv %>%
   filter(time == 300) %>%
   select(!host_id) %>%
   group_by(sim_id, rep_id) %>%
@@ -79,9 +90,156 @@ test_summary <- test_sims %>%
   left_join(select(test_sims, prop, moran, sim_id) %>% unique(), 
             by = "sim_id")
 
-ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
+test_summaries <- test_summary %>%
+  mutate(model = "No Individual Variation") %>%
+  bind_rows(test_summary_iv %>%
+              mutate(model = "Individual Variation")) %>%
+  mutate(model = model %>%
+           as.factor() %>%
+           fct_relevel("No Individual Variation", "Individual Variation"))
+
+iv_plot <- ggplot(data = test_summaries, aes(x = moran, y = disp_burden, color = factor(prop))) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
-  scale_color_viridis_d() +
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Dispersion") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  facet_wrap(vars(model)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+iv_plot
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/temp_iv_plot_", 
+                         timestamp,
+                         ".png"), plot = iv_plot, width = 10, height = 6, units = "in")
+
+## summarize by individual
+ind_summary <- test_sims_iv %>%
+  filter(time == 300) %>%
+  group_by(sim_id, rep_id, inactivity) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  left_join(select(test_sims, prop, cluster, sim_id) %>% unique(), 
+            by = "sim_id")
+
+ind_plot <- ggplot(ind_summary, aes(x = inactivity, y = mean_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(vars(cluster), nrow = 1) +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  scale_x_continuous(name = "Probability of Not Moving", sec.axis = sec_axis(~ . , name = "Cluster Factor", breaks = NULL, labels = NULL)) +
+  labs(y = "Mean Parasite Burden") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/temp_ind_plot_", 
+                         timestamp,
+                         ".png"), plot = ind_plot, width = 12, height = 6, units = "in")
+  
+
+```
+
+#### Plotting Landscapes
+
+Let's make a nice plot of the 20 landscapes
+
+```{r}
+
+ls_list_coords <- map_df(ls_list,
+                         function(x){
+                           bind_cols(x$coords, x$ls_stats)
+                         },
+                         .id = "ls_id")
+
+## Second axis code from LizLaw
+## https://stackoverflow.com/questions/11353287/how-do-you-add-a-general-label-to-facets-in-ggplot2
+
+ls_plots <- ggplot(data = ls_list_coords) +
+  geom_tile(aes(x = x, y = y, fill = factor(value), color = factor(value))) +
+  scale_fill_manual(values = c("white", "salmon"), guide = "none") +
+  scale_color_manual(values = c("white", "salmon"), guide = "none") +
+  coord_fixed() +
+  facet_grid(rows = vars(cluster), cols = vars(prop)) +
+  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Cluster Factor", breaks = NULL, labels = NULL)) +
+  scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Proportion", breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank())
+
+ls_plots
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/temp_ls_plots_", 
+                         timestamp,
+                         ".png"), plot = ls_plots)
+
+moran_plot <- ggplot(data = ls_list_coords %>% 
+                       select(!c(x, y, id, weight, value)) %>%
+                       unique(),
+                     aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_jitter(width = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, alpha = 0.2) +
+  scale_color_viridis_d(name = "Parasite Proportion") +
+  labs(x = "Cluster Factor", y = "Moran's I") +
   theme_bw()
+
+moran_plot
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+ggsave(filename = str_c("sim_output/temp_moran_plot_", 
+                         timestamp,
+                         ".png"), plot = moran_plot)
+
+```
+
+#### Plotting Simulations
+
+Make some nifty animations!
+
+```{r}
+
+sample_ls <- ls_list[[10]]
+sample_sim <- test_sims %>% filter(sim_id == 9, rep_id == 1)
+
+ls_anim <- ggplot(data = sample_sim) +
+  geom_tile(data = sample_ls$coords, aes(x = x, y = y, fill = factor(value))) +
+  scale_fill_manual(values = c("white", "salmon"), guide = "none") +
+  geom_point(aes(x = x, y = y), alpha = 0.5) +
+  transition_time(time) +
+  ease_aes('linear') +
+  labs(title = "Timestep: {frame_time}") +
+  theme_minimal() +
+  theme_bw() +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank())
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+anim_save(filename = str_c("sim_output/temp_ls_anim_", 
+                         timestamp,
+                         ".gif"), animation = ls_anim)
+
+
+hist_anim <- ggplot(data = sample_sim) +
+  geom_histogram(aes(x = parasite_burden), binwidth = 1, center = 0) +
+  scale_y_continuous(limits = c(0, max(sample_sim$host_id))) +
+  scale_x_continuous(limits = c(-1, max(sample_sim$parasite_burden))) +
+  transition_time(time) +
+  ease_aes('linear') +
+  labs(title = "Timestep: {frame_time}", x = "Parasite Burden", y = "# Hosts") +
+  theme_bw()
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+anim_save(filename = str_c("sim_output/temp_hist_anim_", 
+                         timestamp,
+                         ".gif"), animation = hist_anim)
+
 ```
