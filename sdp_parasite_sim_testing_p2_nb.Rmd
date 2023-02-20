@@ -8,7 +8,7 @@ title: "sdp_parasite_sim_testing_p1_nb"
 output: html_document
 ---
 
-### Parasite Simulation Testing Part 1
+### Parasite Simulation Testing Part 2
 
 First, source the functions:
 
@@ -17,4 +17,71 @@ library(tidyverse)
 library(som.nn)
 library(ape)
 source("parasite_sim_functions.R")
+```
+
+Now read the landscapes
+
+```{r}
+
+ls_list <- read_rds("sim_output/temp_ls_list_20230215_173748.rds")
+
+```
+
+Now run 10 sims per landscape
+
+```{r}
+
+test_sims <- map_df(ls_list, ~parasite_sim(.x, n_hosts = 96, n_moves = 300, n_reps = 10), .id = "sim_id", .progress = TRUE)
+```
+
+Now summarize and plot
+
+```{r}
+test_summary <- test_sims %>%
+  filter(time == 300) %>%
+  select(!host_id) %>%
+  group_by(sim_id, rep_id) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  left_join(select(test_sims, prop, moran, sim_id) %>% unique(), 
+            by = "sim_id")
+
+ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_color_viridis_d() +
+  theme_bw()
+
+```
+
+#### Individual Variation
+
+What if individual movement tendencies vary?
+
+```{r}
+test_sims <- map_df(ls_list, 
+                    ~parasite_sim(.x, n_hosts = 96, 
+                                  n_moves = 300, n_reps = 10,
+                                  movetypes = tibble(type = c(0.1, 0.3, 0.5, 0.7),
+                                                     prop = rep(0.25, 4))),
+                    .id = "sim_id", 
+                    .progress = TRUE)
+
+
+test_summary <- test_sims %>%
+  filter(time == 300) %>%
+  select(!host_id) %>%
+  group_by(sim_id, rep_id) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  left_join(select(test_sims, prop, moran, sim_id) %>% unique(), 
+            by = "sim_id")
+
+ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_color_viridis_d() +
+  theme_bw()
 ```

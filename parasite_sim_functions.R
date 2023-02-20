@@ -12,6 +12,7 @@
 #' diagonal movement no longer possible
 #' can account for individual variation in movement tendency
 #' updated functions sourced from "sdp_individual_move_variation_nb.rmd"
+#' Note: had to add ungroup to move function 20230220 
 ##
 
 library(tidyverse)
@@ -150,7 +151,7 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps){
     mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
            parasite_burden = cumsum(parasite_gain)) ## attach parasites
   
-  return(hosts_moving)
+  return(ungroup(hosts_moving))
 }
 
 
