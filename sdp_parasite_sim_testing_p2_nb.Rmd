@@ -35,6 +35,10 @@ Now run 10 sims per landscape
 ```{r}
 
 test_sims <- map_df(ls_list, ~parasite_sim(.x, n_hosts = 96, n_moves = 300, n_reps = 10), .id = "sim_id", .progress = TRUE)
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(test_sims, str_c("sim_output/temp_sims_", timestamp, ".rds"))
 ```
 
 Now summarize and plot
@@ -78,6 +82,10 @@ test_sims_iv <- map_df(ls_list,
                                                      prop = rep(0.25, 4))),
                     .id = "sim_id", 
                     .progress = TRUE)
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(test_sims, str_c("sim_output/temp_sims_iv_", timestamp, ".rds"))
 
 
 test_summary_iv <- test_sims_iv %>%
@@ -218,8 +226,8 @@ Make some nifty animations!
 
 ```{r}
 
-sample_ls <- ls_list[[10]]
-sample_sim <- test_sims %>% filter(sim_id == 9, rep_id == 1)
+sample_ls <- ls_list[[3]]
+sample_sim <- test_sims %>% filter(sim_id == 3, rep_id == 1)
 
 ls_anim <- ggplot(data = sample_sim) +
   geom_tile(data = sample_ls$coords, aes(x = x, y = y, fill = factor(value))) +
