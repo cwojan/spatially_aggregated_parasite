@@ -1,0 +1,103 @@
+---
+title: "sdp_landscape_gen_nb"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+First, source the functions:
+
+```{r}
+library(tidyverse)
+library(som.nn) 
+library(ape)
+source("parasite_sim_functions.R")
+```
+
+Now gen some landscapes
+
+```{r}
+
+##test new ls function
+
+Sys.time()
+test_ls <- fast_ls_perc(24, prop = 0.2, cluster = 5)
+Sys.time()
+
+plot(raster(test_ls$matrix))
+
+Sys.time()
+test_ls <- fast_ls_perc(24, prop = 0.8, cluster = 5)
+Sys.time()
+
+props <- rep(seq(5, 95, 5) / 100, 17)
+clusters <- rep(seq(0, 16, 1), each = 19)
+
+ls_list <- map2(
+  .x = props,
+  .y = clusters,
+  ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+  .progress = TRUE
+)
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(ls_list, str_c("sim_output/ls_list_", 
+                         timestamp,
+                         ".rds"))
+
+## checking what they look like
+
+ls_list_coords <- map_df(ls_list,
+                         function(x){
+                           bind_cols(x$coords, x$ls_stats)
+                         },
+                         .id = "ls_id")
+
+ggplot(data = ls_list_coords) +
+  geom_tile(aes(x = x, y = y, fill = factor(value))) +
+  scale_fill_manual(values = c("white", "darkgreen")) +
+  facet_grid(rows = vars(cluster), cols = vars(prop)) +
+  theme_bw()
+```
+
+Now why not simulate? Note: raster interferes with parasite sim function
+due to "select"
+
+```{r}
+test_sims <- map_df(ls_list, ~parasite_sim(.x, n_hosts = 96, n_moves = 300, n_reps = 10), .id = "sim_id", .progress = TRUE)
+
+test_sims_end <- test_sims %>% filter(time == 300)
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+write_rds(test_sims_end, str_c("sim_output/temp_sims_", timestamp, ".rds"))
+
+test_sims_end <- read_rds("sim_output/temp_sims_20230223_084533.rds")
+
+test_summary <- test_sims_end %>%
+  select(!host_id) %>%
+  group_by(sim_id, rep_id) %>%
+  summarise(mean_burden = mean(parasite_burden),
+            var_burden = var(parasite_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  left_join(select(test_sims_end, prop, moran, sim_id) %>% unique(), 
+            by = "sim_id")
+
+sim_plot <- ggplot(data = test_summary, aes(x = moran, y = disp_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Dispersion") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+sim_plot
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/temp_sim_plot_", 
+                         timestamp,
+                         ".png"), plot = sim_plot, width = 8, height = 6, units = "in")
+```

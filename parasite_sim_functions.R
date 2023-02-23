@@ -15,6 +15,11 @@
 #' Note: had to add ungroup to move function 20230220 
 ##
 
+##
+#' update 20230222
+#' modified ls function to be more efficient with props > 0.5
+##
+
 library(tidyverse)
 library(som.nn)
 library(ape)
@@ -34,13 +39,19 @@ library(ape)
 
 fast_ls_perc <- function(size, prop, cluster){
   ## Calculate number of cells to fill based on size and prop
-  potential <- floor((size^2) * prop)
+  if(prop > 0.5){
+    potential <- floor((size^2) * (1-prop))
+    fill <- 0
+  } else {
+    potential <- floor((size^2) * prop)
+    fill <- 1
+  }
   ## Create empty data representing the landscape
   coords <- tibble(x = rep(1:size, size), 
                    y = rep(1:size, each = size),
                    id = str_c(x, y, sep = "_"),
                    weight = rep(1, size^2), # Weight starts equal for all cells
-                   value = rep(0, size^2)) # Cell type starts out as 0 for all
+                   value = rep(1-fill, size^2)) # Cell type starts out as 0 for all
   
   ## Initialize the possible percolation locations
   possibles <- coords$id
@@ -49,10 +60,10 @@ fast_ls_perc <- function(size, prop, cluster){
     
     ## Pick a random cell (weighted by the "weight" column) to set as landscape value "1"
     point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
-    coords[coords$id %in% point, "value"] <- 1
+    coords[coords$id %in% point, "value"] <- fill
     
     ## Record current ones
-    ones <- coords$value == 1
+    ones <- coords$value == fill
     
     ## Make an inverse distance matrix of all points
     inv_dists <- 1/as.matrix(dist(cbind(coords$x, coords$y)))
@@ -70,7 +81,7 @@ fast_ls_perc <- function(size, prop, cluster){
     
     ## Refill the possible cells for percolation as only the remaining zeroes
     possibles <- coords %>%
-      filter(value == 0) %>%
+      filter(value == 1-fill) %>%
       #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
       pull(id)
     
