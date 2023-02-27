@@ -20,6 +20,12 @@
 #' modified ls function to be more efficient with props > 0.5
 ##
 
+##
+#' update 2023027
+#' moved dist matrix initialization outside of for loop
+##
+
+
 library(tidyverse)
 library(som.nn)
 library(ape)
@@ -53,6 +59,11 @@ fast_ls_perc <- function(size, prop, cluster){
                    weight = rep(1, size^2), # Weight starts equal for all cells
                    value = rep(1-fill, size^2)) # Cell type starts out as 0 for all
   
+  ## Make an inverse distance matrix of all points
+  inv_dists <- 1/as.matrix(dist(cbind(coords$x, coords$y)))
+  ## Remove Inf values
+  diag(inv_dists) <- 0
+  
   ## Initialize the possible percolation locations
   possibles <- coords$id
   ## Percolate as many cells as need to be filled
@@ -64,11 +75,6 @@ fast_ls_perc <- function(size, prop, cluster){
     
     ## Record current ones
     ones <- coords$value == fill
-    
-    ## Make an inverse distance matrix of all points
-    inv_dists <- 1/as.matrix(dist(cbind(coords$x, coords$y)))
-    ## Remove Inf values
-    diag(inv_dists) <- 0
     
     ## Select only the columns of points with 1 as their value
     inv_dists_filt <- as.matrix(inv_dists[,ones])
