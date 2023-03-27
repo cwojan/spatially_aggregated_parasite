@@ -1,0 +1,245 @@
+---
+title: "modifying_parasite_gain"
+format: html
+editor: visual
+---
+
+## Modifying Acquisition of Parasites
+
+```{r}
+library(tidyverse)
+library(som.nn)
+library(ape)
+```
+
+First, source the landscape generator and generate a test landscape:
+
+```{r}
+source("parasite_sim_functions.R")
+rm(move_host_fast)
+
+test_ls <- fast_ls_perc(48, 0.5, 0)
+```
+
+Now let's check the old movement sim function:
+
+```{r}
+
+## from parasite_sim_functions.R
+move_host_fast <- function(hosts, coords, n_moves, n_reps){
+  
+  ## save number of hosts
+  n_hosts <- nrow(hosts) / n_reps
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## set up moves to sample from
+  moveset <- tibble(
+    move_id = 1:5,
+    xmove = c(0, 0, 0, -1, 1),
+    ymove = c(0, -1, 1, 0, 0)
+  )
+  
+  hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
+    mutate(time = rep(0:n_moves, n_hosts * n_reps),
+           active = inactivity * runif(n()) >= inactivity^2,
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>%
+    left_join(moveset, by = "move_id") %>%
+    mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
+           ymove = if_else(time == 0, y, as.integer(ymove))) %>%
+    group_by(rep_id, host_id) %>%
+    mutate(pre_x = cumsum(xmove),
+           pre_y = cumsum(ymove),
+           oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")
+    ) %>%
+    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
+    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
+           parasite_burden = cumsum(parasite_gain)) ## attach parasites
+  
+  return(ungroup(hosts_moving))
+}
+
+
+## create host data
+
+n_hosts <- 2
+n_reps <- 1
+
+## Set random starting positions for each host
+host_origins <- slice_sample(test_ls$coords, n = n_hosts * n_reps, replace = TRUE)
+
+movetypes <- tibble(type = 0.8, prop = 1)
+
+## Create host data frame
+hosts <- host_origins %>%
+  select(x, y, id) %>%
+  mutate(host_id = seq_len(nrow(host_origins)),
+         time = 0,
+         rep_id = rep(seq_len(n_reps), each = n_hosts),
+         inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
+
+## testing to see output
+
+moved <- move_host_fast(hosts = hosts, coords = test_ls$coords, n_moves = 10, n_reps = n_reps)
+
+moved_test <- moved %>%
+  mutate(last = pmax(abs(xmove), abs(ymove)),
+         last = if_else(last > 1, as.integer(NA), last))
+
+parasite_gain <- "stay"
+
+if (parasite_gain == "both") {
+  infected <- moved_test %>%
+    mutate(parasite_gain = if_else(time == 0, 0,
+                                   value * rbinom(n = n(), size = 1, prob = 1)),
+           parasite_burden = cumsum(parasite_gain))
+} else if (parasite_gain == "move") {
+  infected <- moved_test %>%
+    mutate(parasite_gain = if_else(time == 0, 0,
+                                   value * last * rbinom(n = n(), size = 1, prob = 1)),
+           parasite_burden = cumsum(parasite_gain))
+} else if (parasite_gain == "stay") {
+  infected <- moved_test %>%
+    mutate(parasite_gain = if_else(time == 0, 0,
+                                   value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = 1)),
+           parasite_burden = cumsum(parasite_gain))
+}
+
+
+```
+
+Now I think I can rewrite the function and test...
+
+```{r}
+
+move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both"){
+  
+  ## save number of hosts
+  n_hosts <- nrow(hosts) / n_reps
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## set up moves to sample from
+  moveset <- tibble(
+    move_id = 1:5,
+    xmove = c(0, 0, 0, -1, 1),
+    ymove = c(0, -1, 1, 0, 0)
+  )
+  
+  hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
+    mutate(time = rep(0:n_moves, n_hosts * n_reps),
+           active = inactivity * runif(n()) >= inactivity^2,
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>%
+    left_join(moveset, by = "move_id") %>%
+    mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
+           ymove = if_else(time == 0, y, as.integer(ymove)),
+           last = pmax(abs(xmove), abs(ymove)),
+           last = if_else(last > 1, as.integer(NA), last)) %>%
+    group_by(rep_id, host_id) %>%
+    mutate(pre_x = cumsum(xmove),
+           pre_y = cumsum(ymove),
+           oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")
+    ) %>%
+    left_join(select(coords, id, value), by = "id")
+  
+  if (p_gain == "both") {
+  infected <- hosts_moving %>%
+    mutate(parasite_gain = if_else(time == 0, 0,
+                                   value * rbinom(n = n(), size = 1, prob = 0.5)))
+  } else if (p_gain == "move") {
+  infected <- hosts_moving %>%
+    mutate(parasite_gain = if_else(time == 0, 0,
+                                   value * last * rbinom(n = n(), size = 1, prob = 0.5)))
+  } else if (p_gain == "stay") {
+  infected <- hosts_moving %>%
+    mutate(parasite_gain = if_else(time == 0, 0,
+                                   value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = 0.5)))
+  }
+  
+  infected <- infected %>%
+    mutate(parasite_burden = cumsum(parasite_gain))
+  
+  return(ungroup(infected))
+}
+
+
+## test
+
+new_test <- move_host_fast(hosts = hosts, coords = test_ls$coords, 
+                           n_moves = 10, n_reps = n_reps, p_gain = "stay")
+
+```
+
+Appears to be working! Now integrate with parasite simulation...
+
+```{r}
+
+## add p_gain to sim function
+parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1, 
+                         movetypes = tibble(type = 0.2, prop = 1),
+                         p_gain = "both"){
+  
+  ## Set random starting positions for each host
+  host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
+  
+  ## Create host data frame
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           time = 0,
+           rep_id = rep(seq_len(n_reps), each = n_hosts),
+           inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
+  
+  ## Simulate movement and parasite gain
+  hosts_moved <- move_host_fast(hosts = hosts, coords = landscape$coords, 
+                                n_moves = n_moves, n_reps = n_reps, p_gain = p_gain)
+  
+  ## Package and return host and landscape info
+  out <- bind_cols(hosts_moved, landscape$ls_stats)
+  return(out)
+}
+
+#test
+
+test_simb <- parasite_sim(landscape = test_ls, n_hosts = 12, n_moves = 50, n_reps = 2,
+                          movetypes = tibble(type = c(0.2, 0.8), prop = c(0.5, 0.5)))
+
+test_simm <- parasite_sim(landscape = test_ls, n_hosts = 12, n_moves = 50, n_reps = 2,
+                          movetypes = tibble(type = c(0.2, 0.8), prop = c(0.5, 0.5)),
+                          p_gain = "move")
+
+test_sims <- parasite_sim(landscape = test_ls, n_hosts = 12, n_moves = 50, n_reps = 2,
+                          movetypes = tibble(type = c(0.2, 0.8), prop = c(0.5, 0.5)),
+                          p_gain = "stay")
+
+
+## check burdens
+
+test_simb %>%
+  filter(time == max(time)) %>%
+  summarize(mean = mean(parasite_burden))
+
+test_simm %>%
+  filter(time == max(time)) %>%
+  group_by(inactivity) %>%
+  summarize(mean = mean(parasite_burden))
+
+test_sims %>%
+  filter(time == max(time)) %>%
+  group_by(inactivity) %>%
+  summarize(mean = mean(parasite_burden))
+```
+
+Looks like that's working too!

@@ -25,6 +25,12 @@
 #' moved dist matrix initialization outside of for loop
 ##
 
+##
+#' update 20230327
+#' revised parasite gain to happen based on previous timestep
+#' added ability to specify if parasite gain can happen after moving, staying, or both
+##
+
 
 library(tidyverse)
 library(som.nn)
@@ -129,10 +135,11 @@ fast_ls_perc <- function(size, prop, cluster){
 #' coords, coords of the landscape
 #' n_moves, number of timesteps
 #' n_reps, number of replicates
+#' p_gain, when parasites are acquired: "move", "stay", or "both"
 #' Requires:
 #' tidyverse
 
-move_host_fast <- function(hosts, coords, n_moves, n_reps){
+move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both"){
   
   ## save number of hosts
   n_hosts <- nrow(hosts) / n_reps
@@ -148,13 +155,16 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps){
     ymove = c(0, -1, 1, 0, 0)
   )
   
+  ## move hosts
   hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
     mutate(time = rep(0:n_moves, n_hosts * n_reps),
            active = inactivity * runif(n()) >= inactivity^2,
-           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>%
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>% ## create moves
     left_join(moveset, by = "move_id") %>%
     mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
-           ymove = if_else(time == 0, y, as.integer(ymove))) %>%
+           ymove = if_else(time == 0, y, as.integer(ymove)),
+           last = pmax(abs(xmove), abs(ymove)),
+           last = if_else(last > 1, as.integer(NA), last)) %>% ## save last move
     group_by(rep_id, host_id) %>%
     mutate(pre_x = cumsum(xmove),
            pre_y = cumsum(ymove),
@@ -164,11 +174,27 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps){
            y = pre_y - (max_y * oob_y),
            id = str_c(x, y, sep = "_")
     ) %>%
-    left_join(select(coords, id, value), by = "id") %>% ## bring in parasite info
-    mutate(parasite_gain = value * rbinom(n = n(), size = 1, prob = 0.5),
-           parasite_burden = cumsum(parasite_gain)) ## attach parasites
+    left_join(select(coords, id, value), by = "id") ## join with parasite data
   
-  return(ungroup(hosts_moving))
+  ## add parasites based on scenario
+  if (p_gain == "both") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * rbinom(n = n(), size = 1, prob = 0.5)))
+  } else if (p_gain == "move") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * last * rbinom(n = n(), size = 1, prob = 0.5)))
+  } else if (p_gain == "stay") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = 0.5)))
+  }
+  
+  infected <- infected %>%
+    mutate(parasite_burden = cumsum(parasite_gain))
+  
+  return(ungroup(infected))
 }
 
 
@@ -182,11 +208,13 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps){
 #' n_moves, how many timesteps
 #' n_reps, how many replicates per landscape
 #' movetypes, 2 column tibble specifying movement tendencies and pop. proportions
+#' p_gain, when parasites are acquired: "move", "stay", or "both"
 #' Requires:
 #' tidyverse
 
 parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1, 
-                         movetypes = tibble(type = 0.2, prop = 1)){
+                         movetypes = tibble(type = 0.2, prop = 1),
+                         p_gain = "both"){
   
   ## Set random starting positions for each host
   host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
@@ -201,7 +229,7 @@ parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1,
   
   ## Simulate movement and parasite gain
   hosts_moved <- move_host_fast(hosts = hosts, coords = landscape$coords, 
-                                n_moves = n_moves, n_reps = n_reps)
+                                n_moves = n_moves, n_reps = n_reps, p_gain = p_gain)
   
   ## Package and return host and landscape info
   out <- bind_cols(hosts_moved, landscape$ls_stats)
