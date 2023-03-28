@@ -31,6 +31,11 @@
 #' added ability to specify if parasite gain can happen after moving, staying, or both
 ##
 
+##
+#' update 20230328
+#' sim function now saves p_gain type
+##
+
 
 library(tidyverse)
 library(som.nn)
@@ -232,6 +237,7 @@ parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1,
                                 n_moves = n_moves, n_reps = n_reps, p_gain = p_gain)
   
   ## Package and return host and landscape info
-  out <- bind_cols(hosts_moved, landscape$ls_stats)
+  out <- bind_cols(hosts_moved, landscape$ls_stats) %>%
+    mutate(scenario = p_gain)
   return(out)
 }
