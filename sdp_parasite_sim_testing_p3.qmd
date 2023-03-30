@@ -26,6 +26,8 @@ ls_list <- read_rds("sim_output/ls_list_20230223_070544.rds")
 
 ```
 
+### Basic Sim
+
 Now run 10 sims per landscape, for each scenario
 
 ```{r}
@@ -45,6 +47,8 @@ s_sims <- map_df(.x = ls_list, ~parasite_sim(landscape = .x, n_hosts = 96, n_mov
 gc()
 
 ```
+
+#### Basic Plot
 
 Now summarize and plot
 
@@ -101,7 +105,45 @@ sims_plot <- ggplot(data = sim_summary, aes(x = moran, y = disp_burden, color = 
   theme(legend.position = "bottom")
 
 sims_plot
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/basic_sims_plot_", 
+                         timestamp,
+                         ".png"), plot = sims_plot, width = 10, height = 6, units = "in")
+
+basic_means <- ggplot(data = sim_summary, aes(x = moran, y = mean_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(vars(scenario), nrow = 1) +
+  labs(x = "Moran's I (Clustering)", y = "Mean Parasite Burden") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/basic_means_plot_", 
+                         timestamp,
+                         ".png"), plot = basic_means, width = 10, height = 6, units = "in")
+
+basic_vars <- ggplot(data = sim_summary, aes(x = moran, y = var_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(vars(scenario), nrow = 1) +
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Variance") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/basic_vars_plot_", 
+                         timestamp,
+                         ".png"), plot = basic_vars, width = 10, height = 6, units = "in")
 ```
+
+### Individual Variation
 
 Now try with individual variation
 
@@ -126,6 +168,8 @@ siv_sims <- map_df(.x = ls_list, ~parasite_sim(landscape = .x, n_hosts = 96, n_m
 
 gc()
 ```
+
+#### Population Level
 
 now summarize...
 
@@ -188,7 +232,59 @@ simiv_plot <- ggplot(data = simiv_summary, aes(x = moran, y = disp_burden, color
   theme(legend.position = "bottom")
 
 simiv_plot
+
+comp_summaries <- bind_rows(
+  sim_summary %>% mutate(iv = "No Individual Variation"),
+  simiv_summary %>% mutate(iv = "Individual Variation")
+)
+
+comp_means <- ggplot(data = comp_summaries, aes(x = moran, y = mean_burden, color = factor(prop))) +
+  geom_point() +
+  facet_grid(rows = vars(iv), cols = vars(scenario)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Moran's I (Clustering)", y = "Mean Parasite Burden") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/comp_means_plot_", 
+                         timestamp,
+                         ".png"), plot = comp_means, width = 8, height = 6, units = "in")
+
+comp_vars <- ggplot(data = comp_summaries, aes(x = moran, y = var_burden, color = factor(prop))) +
+  geom_point() +
+  facet_grid(rows = vars(iv), cols = vars(scenario)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Variance") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/comp_vars_plot_", 
+                         timestamp,
+                         ".png"), plot = comp_vars, width = 8, height = 6, units = "in")
+
+comp_disps <- ggplot(data = comp_summaries, aes(x = moran, y = disp_burden, color = factor(prop))) +
+  geom_point() +
+  facet_grid(rows = vars(iv), cols = vars(scenario)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Dispersion") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/comp_disps_plot_", 
+                         timestamp,
+                         ".png"), plot = comp_disps, width = 8, height = 6, units = "in")
 ```
+
+#### Individual Level
 
 now let's look at individuals
 
@@ -223,7 +319,8 @@ sind_summary <- siv_sims %>%
 ind_summary <- bind_rows(bind_summary, mind_summary, sind_summary) %>%
   ungroup() %>%
   mutate(diff_mean = abs(c(diff(mean_burden), NA)),
-         diff_var = abs(c(diff(var_burden), NA)))
+         diff_var = abs(c(diff(var_burden), NA)),
+         movetype = if_else(inactivity == 0.2, "mover", "stayer"))
 
 timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
 write_rds(ind_summary, str_c("sim_output/ind_summary", timestamp, ".rds"))
@@ -231,18 +328,37 @@ write_rds(ind_summary, str_c("sim_output/ind_summary", timestamp, ".rds"))
 ind_plot <- ggplot(ind_summary,aes(x = moran, y = mean_burden, color = factor(prop))) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
-  facet_grid(rows = vars(scenario), cols = vars(factor(inactivity))) +
+  facet_grid(rows = vars(scenario), cols = vars(movetype)) +
   labs(x = "Moran's I (Clustering)", y = "Mean Parasite Burden") +
   scale_color_viridis_d(name = "Parasite \nProportion") +
-  theme_bw() +
-  theme(legend.position = "none")
+  theme_bw()
 
 ind_plot
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/ind_means_plot_", 
+                         timestamp,
+                         ".png"), plot = ind_plot, width = 8, height = 6, units = "in")
+
+ind_vars <- ggplot(ind_summary,aes(x = moran, y = var_burden, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_grid(rows = vars(scenario), cols = vars(movetype)) +
+  labs(x = "Moran's I (Clustering)", y = "Parasite Burden Variance") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw()
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/ind_vars_plot_", 
+                         timestamp,
+                         ".png"), plot = ind_vars, width = 8, height = 6, units = "in")
 
 ind_diffs <- ind_summary %>%
   filter(inactivity == 0.2)
 
-ggplot(ind_diffs, aes(x = moran, y = diff_var, color = factor(prop))) +
+diff_means <- ggplot(ind_diffs, aes(x = moran, y = diff_mean, color = factor(prop))) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
   facet_grid(cols = vars(scenario)) +
@@ -250,4 +366,25 @@ ggplot(ind_diffs, aes(x = moran, y = diff_var, color = factor(prop))) +
   scale_color_viridis_d(name = "Parasite \nProportion") +
   theme_bw() +
   theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/diff_means_plot_", 
+                         timestamp,
+                         ".png"), plot = diff_means, width = 8, height = 6, units = "in")
+
+diff_vars <- ggplot(ind_diffs, aes(x = moran, y = diff_var, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_grid(cols = vars(scenario)) +
+  labs(x = "Moran's I (Clustering)", y = "Difference in Parasite Burden Variance\n Between Movers and Stayers") +
+  scale_color_viridis_d(name = "Parasite \nProportion") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+ggsave(filename = str_c("sim_output/diff_vars_plot_", 
+                         timestamp,
+                         ".png"), plot = diff_vars, width = 8, height = 6, units = "in")
 ```
