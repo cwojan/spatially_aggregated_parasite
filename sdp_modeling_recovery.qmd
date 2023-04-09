@@ -1,0 +1,174 @@
+---
+title: "sdp_modeling_recovery"
+format: html
+editor: visual
+---
+
+## Modeling Recovery from Parasites
+
+```{r}
+#| message: false
+library(tidyverse)
+library(som.nn)
+library(ape)
+```
+
+First, source the landscape generator and generate a test landscape:
+
+```{r}
+source("parasite_sim_functions.R")
+rm(move_host_fast)
+
+test_ls <- fast_ls_perc(48, 0.5, 0)
+```
+
+Now let's modify the old movement sim function. Add arguments for infection and recovery probabilities, and calculate both cumulative and current parasite burdens. Note: I went back and modified this function based on the "solution" code chunk
+
+```{r}
+move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both",
+                           infec_prob = 0.5, recov_prob = 0){
+  
+  ## save number of hosts
+  n_hosts <- nrow(hosts) / n_reps
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## set up moves to sample from
+  moveset <- tibble(
+    move_id = 1:5,
+    xmove = c(0, 0, 0, -1, 1),
+    ymove = c(0, -1, 1, 0, 0)
+  )
+  
+  ## move hosts
+  hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
+    mutate(time = rep(0:n_moves, n_hosts * n_reps),
+           active = inactivity * runif(n()) >= inactivity^2,
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>% ## create moves
+    left_join(moveset, by = "move_id") %>%
+    mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
+           ymove = if_else(time == 0, y, as.integer(ymove)),
+           last = pmax(abs(xmove), abs(ymove)),
+           last = if_else(last > 1, as.integer(NA), last)) %>% ## save last move
+    group_by(rep_id, host_id) %>%
+    mutate(pre_x = cumsum(xmove),
+           pre_y = cumsum(ymove),
+           oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")
+    ) %>%
+    left_join(select(coords, id, value), by = "id") ## join with parasite data
+  
+  ## add parasites based on scenario
+  if (p_gain == "both") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * rbinom(n = n(), size = 1, prob = infec_prob)))
+  } else if (p_gain == "move") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * last * rbinom(n = n(), size = 1, prob = infec_prob)))
+  } else if (p_gain == "stay") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = infec_prob)))
+  }
+  
+  infected <- infected %>%
+    mutate(cum_burden = cumsum(parasite_gain),
+           durations = rnbinom(n = n(), size = 1, prob = recov_prob),
+           lose_points = time + durations)
+  
+  losses <- infected %>%
+    filter(parasite_gain == 1) %>%
+    group_by(rep_id, host_id, lose_points) %>%
+    summarise(losses = n()) %>%
+    rename(time = lose_points)
+  
+  recovered <- infected %>%
+    left_join(losses, by = c("rep_id", "host_id", "time")) %>%
+    mutate(losses = replace_na(losses, 0),
+           cum_losses = cumsum(losses),
+           cur_burden = cum_burden - cum_losses)
+    
+  
+  return(ungroup(recovered))
+}
+```
+
+Now test
+
+```{r}
+## create host data
+
+n_hosts <- 10
+n_reps <- 2
+
+## Set random starting positions for each host
+host_origins <- slice_sample(test_ls$coords, n = n_hosts * n_reps, replace = TRUE)
+
+movetypes <- tibble(type = 0.2, prop = 1)
+
+## Create host data frame
+hosts <- host_origins %>%
+  select(x, y, id) %>%
+  mutate(host_id = seq_len(nrow(host_origins)),
+         time = 0,
+         rep_id = rep(seq_len(n_reps), each = n_hosts),
+         inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
+
+new_test <- move_host_fast(hosts = hosts, coords = test_ls$coords, 
+                           n_moves = 10, n_reps = n_reps, p_gain = "stay",
+                           infec_prob = 1, recov_prob = 0.2)
+
+new_test <- new_test %>% mutate(net = parasite_gain - recover,
+                                cbr = cum_burden - recover)
+
+
+```
+
+Wait a second, accumulating recovery is complicated when vectorized, maybe have to do an iterator afterwards
+
+```{r solution}
+test_gain <- rbinom(n = 96, size = 300, prob = 0.5)
+test_reco <- rbinom(n = 96, size = 300, prob = 0.5)
+
+test_gain <- rbinom(n = 300, size = 1, prob = 0.5)
+gains <- which(test_gain == 1)
+
+
+durations <- rnbinom(n = length(gains), size = 1, prob = 0.5)
+lose_points <- gains + durations
+
+
+test_data <- tibble(host = 1,
+                    time = 1:300,
+                    test_gain = rbinom(n = 300, size = 1, prob = 0.5),
+                    durations = rnbinom(n = 300, size = 1, prob = 0.2),
+                    lose_points = time + durations) %>%
+  left_join(x = ., y = . %>%
+  filter(test_gain == 1) %>%
+  group_by(lose_points) %>%
+  summarise(losses = n()) %>%
+  rename(time = lose_points),
+  by = "time")
+
+losses <- test_data %>%
+  filter(test_gain == 1) %>%
+  group_by(lose_points) %>%
+  summarise(losses = n()) %>%
+  rename(time = lose_points)
+
+test_join <- test_data %>%
+  left_join(losses, by = "time") %>%
+  mutate(losses = replace_na(losses, 0),
+         cum_burden = cumsum(test_gain),
+         cum_losses = cumsum(losses),
+         cur_burden = cum_burden - cum_losses)
+```
+
+That's it!
