@@ -1,0 +1,98 @@
+---
+title: "sdp_parasite_sim_testing_p4"
+format: html
+editor: visual
+---
+
+## Parasite Simulation Testing Part 4
+
+Set up libraries and functions
+
+```{r}
+library(tidyverse)
+library(som.nn)
+library(ape)
+library(gganimate)
+library(gifski)
+library(transformr)
+source("parasite_sim_functions.R")
+```
+
+Now read in landscapes
+
+```{r}
+## read in 20 landscapes
+ls_list <- read_rds("sim_output/temp_ls_list_20230215_173748.rds")
+```
+
+### Simulate
+
+```{r}
+
+## simulating separately due to size of data
+
+low_rec_sims <- map_df(.x = ls_list, ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100, n_reps = 5, p_gain = "both", infec_prob = 0.5, recov_prob = 0.1), .id = "sim_id", .progress = TRUE)
+
+
+med_rec_sims <- map_df(.x = ls_list, ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100, n_reps = 5, p_gain = "both", infec_prob = 0.5, recov_prob = 0.3), .id = "sim_id", .progress = TRUE)
+
+rec_sims <- bind_rows(low_rec_sims, med_rec_sims)
+
+rm(low_rec_sims, med_rec_sims)
+gc()
+```
+
+### Assess
+
+```{r}
+timesteps <- rec_sims %>%
+  group_by(sim_id, rep_id, time, prop, cluster, recov_prob) %>%
+  summarise(cur_mean = mean(cur_burden),
+            cur_var = var(cur_burden),
+            cur_disp = cur_var / cur_mean)
+
+cum_burdens <- rec_sims %>%
+  group_by(sim_id, rep_id, time, prop, cluster) %>%
+  summarise(mean_burden = mean(cum_burden),
+            var_burden = var(cum_burden),
+            disp_burden = var_burden / mean_burden)
+
+range(cum_burdens$cluster)
+
+cum_burdens %>% 
+  dplyr::filter(prop == 0.1, cluster == 15) %>%
+  ggplot() +
+  geom_point(aes(x = time, y = disp_burden))
+
+timesteps %>%
+  ggplot(aes(x = time, y = cur_disp, color = factor(prop))) +
+  geom_smooth(se = FALSE) +
+  facet_grid(cols = vars(cluster), rows = vars(recov_prob)) +
+  scale_color_viridis_d() +
+  theme_bw()
+
+cum_burdens %>%
+  ggplot(aes(x = time, y = disp_burden, color = factor(prop))) +
+  geom_smooth(se = FALSE) +
+  facet_grid(cols = vars(cluster)) +
+  scale_color_viridis_d() +
+  theme_bw()
+```
+
+Okay, so cumulative burden dispersion will just keep on increasing indefinitely at high clustering / low density, though it does slow down. Max timestep should perhaps be chosen by current burden instead
+
+```{r}
+cum_burdens %>% 
+  dplyr::filter(cluster == 15) %>%
+  ggplot() +
+  geom_point(aes(x = time, y = disp_burden, color = factor(prop)))
+```
+
+But also need to consider when clustering cause differences between densities.
+
+Based on tests it seem like 100 timesteps should be sufficient (but how best to report this??)
+
+1.  generate landscapes of highest clustering and lowest density
+2.  assess leveling off point for various recov probabilities (strucchange or changepoint package, or maybe just time when rate of change \~= 0)
+
+Also, do something similar to determine maximum clustering input for moran's I leveling off

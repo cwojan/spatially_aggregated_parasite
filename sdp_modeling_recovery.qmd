@@ -78,17 +78,20 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both",
                                      value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = infec_prob)))
   }
   
+  ## calccumulative infection and parasite durations
   infected <- infected %>%
     mutate(cum_burden = cumsum(parasite_gain),
            durations = rnbinom(n = n(), size = 1, prob = recov_prob),
            lose_points = time + durations)
   
+  ## calculate when parasites are lost
   losses <- infected %>%
     filter(parasite_gain == 1) %>%
     group_by(rep_id, host_id, lose_points) %>%
     summarise(losses = n()) %>%
     rename(time = lose_points)
   
+  ## calculate current burdens
   recovered <- infected %>%
     left_join(losses, by = c("rep_id", "host_id", "time")) %>%
     mutate(losses = replace_na(losses, 0),

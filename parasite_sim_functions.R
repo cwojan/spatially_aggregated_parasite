@@ -36,6 +36,12 @@
 #' sim function now saves p_gain type
 ##
 
+##
+#' update 20230412
+#' added recovery into simulation functions
+#' added gc()
+##
+
 
 library(tidyverse)
 library(som.nn)
@@ -141,10 +147,13 @@ fast_ls_perc <- function(size, prop, cluster){
 #' n_moves, number of timesteps
 #' n_reps, number of replicates
 #' p_gain, when parasites are acquired: "move", "stay", or "both"
+#' infec_prob, probability of gaining a parasite when occupying a parasite cell
+#' recov_prob, probability of losing a parasite any given timestep
 #' Requires:
 #' tidyverse
 
-move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both"){
+move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both",
+                           infec_prob = 0.5, recov_prob = 0){
   
   ## save number of hosts
   n_hosts <- nrow(hosts) / n_reps
@@ -185,21 +194,39 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both"){
   if (p_gain == "both") {
     infected <- hosts_moving %>%
       mutate(parasite_gain = if_else(time == 0, 0,
-                                     value * rbinom(n = n(), size = 1, prob = 0.5)))
+                                     value * rbinom(n = n(), size = 1, prob = infec_prob)))
   } else if (p_gain == "move") {
     infected <- hosts_moving %>%
       mutate(parasite_gain = if_else(time == 0, 0,
-                                     value * last * rbinom(n = n(), size = 1, prob = 0.5)))
+                                     value * last * rbinom(n = n(), size = 1, prob = infec_prob)))
   } else if (p_gain == "stay") {
     infected <- hosts_moving %>%
       mutate(parasite_gain = if_else(time == 0, 0,
-                                     value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = 0.5)))
+                                     value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = infec_prob)))
   }
   
+  ## calc cumulative infection and parasite durations
   infected <- infected %>%
-    mutate(parasite_burden = cumsum(parasite_gain))
+    mutate(cum_burden = cumsum(parasite_gain),
+           durations = rnbinom(n = n(), size = 1, prob = recov_prob),
+           lose_points = time + durations)
   
-  return(ungroup(infected))
+  ## calculate when parasites are lost
+  losses <- infected %>%
+    filter(parasite_gain == 1) %>%
+    group_by(rep_id, host_id, lose_points) %>%
+    summarise(losses = n()) %>%
+    rename(time = lose_points)
+  
+  ## calculate current burdens
+  recovered <- infected %>%
+    left_join(losses, by = c("rep_id", "host_id", "time")) %>%
+    mutate(losses = replace_na(losses, 0),
+           cum_losses = cumsum(losses),
+           cur_burden = cum_burden - cum_losses)
+  
+  gc()
+  return(ungroup(recovered))
 }
 
 
@@ -214,12 +241,14 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both"){
 #' n_reps, how many replicates per landscape
 #' movetypes, 2 column tibble specifying movement tendencies and pop. proportions
 #' p_gain, when parasites are acquired: "move", "stay", or "both"
+#' infec_prob, probability of gaining a parasite when occupying a parasite cell
+#' recov_prob, probability of losing a parasite any given timestep
 #' Requires:
 #' tidyverse
 
 parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1, 
                          movetypes = tibble(type = 0.2, prop = 1),
-                         p_gain = "both"){
+                         p_gain = "both", infec_prob = 0.5, recov_prob = 0){
   
   ## Set random starting positions for each host
   host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
@@ -234,10 +263,14 @@ parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1,
   
   ## Simulate movement and parasite gain
   hosts_moved <- move_host_fast(hosts = hosts, coords = landscape$coords, 
-                                n_moves = n_moves, n_reps = n_reps, p_gain = p_gain)
+                                n_moves = n_moves, n_reps = n_reps, p_gain = p_gain,
+                                infec_prob = infec_prob, recov_prob = recov_prob)
   
   ## Package and return host and landscape info
   out <- bind_cols(hosts_moved, landscape$ls_stats) %>%
-    mutate(scenario = p_gain)
+    mutate(scenario = p_gain,
+           infec_prob = infec_prob,
+           recov_prob = recov_prob)
+  gc()
   return(out)
 }
