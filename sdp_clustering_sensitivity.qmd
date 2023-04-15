@@ -1,0 +1,219 @@
+---
+title: "sdp_clustering_sensitivity"
+format: html
+editor: visual
+---
+
+## Assessing Clustering Sensitivity
+
+This document assesses how Moran's I values change with clustering inputs in the modified landscape percolation algorithm. The goal is to determine the upper limit of clustering input to use.
+
+### Setup
+
+```{r}
+library(tidyverse)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+```
+
+### Percolate Landscapes 1
+
+Let's start by creating landscapes over a broad range of inputs
+
+```{r}
+
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 6)
+
+# set cluster to wide range as well
+clusters <- rep(seq(5, 30, 5), each = 3)
+
+# percolate
+ls_list <- map2(.x = props,
+                .y = clusters,
+                ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+                .progress = TRUE)
+```
+
+Now let's see if Moran values level off
+
+```{r}
+
+## store relevant values
+morans <- map_df(1:(length(ls_list)),
+                 function(x){
+                   ls_list[[x]]$ls_stats
+                 })
+
+## plot
+ggplot(morans, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_point()
+```
+
+Moran values level off for 0.1 and 0.9 props at about cluster 20. But for 0.5 it may be still rising.
+
+### Percolate Landscapes 2
+
+Now let's look a little closer
+
+```{r}
+## set new values for prop and cluster, add replication
+
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 35)
+
+# set cluster to narrower range
+clusters <- rep(seq(14, 26, 2), each = 15)
+
+
+ls_list2 <- map2(.x = props,
+                .y = clusters,
+                ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+                .progress = TRUE)
+
+## store relevant values
+morans2 <- map_df(1:(length(ls_list2)),
+                 function(x){
+                   ls_list2[[x]]$ls_stats
+                 })
+
+## plot
+ggplot(morans2, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_point()
+
+## calc
+moran_summary <- morans2 %>%
+  group_by(prop, cluster) %>%
+  summarize(mean_moran = mean(moran)) %>%
+  group_by(prop) %>%
+  arrange(cluster) %>%
+  mutate(moran_change = c(diff(mean_moran), NA),
+         moran_pct_change = moran_change / mean_moran) %>%
+  arrange(prop, cluster)
+
+```
+
+### Percolate Landscapes 3
+
+Let's go narrower
+
+```{r}
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 30)
+
+# set cluster to narrower range
+clusters <- rep(seq(13, 18, 1), each = 15)
+
+ls_list2 <- map2(.x = props,
+                .y = clusters,
+                ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+                .progress = TRUE)
+```
+
+#### Resetting my approach...
+
+```{r}
+
+library(changepoint)
+x <- 1:20
+y <- rnorm(100, mean = c(2*x[1:10], rep(20, 10)), sd = 0.5)
+
+test <- tibble(x = rep(x, 5), y = y) %>%
+  group_by(x) %>%
+  summarize(mean = mean(y)) %>%
+  ungroup() %>%
+  mutate(change = c(diff(mean), NA),
+         change_pct = change / mean)
+
+test <- tibble(x = rep(x, 5), y = y) %>%
+  arrange(x)
+
+
+
+plot(test$mean)
+
+cpts <-changepoint::cpt.mean(test$mean, class = FALSE)
+
+cpts
+
+cpts@cpts
+```
+
+This is too much in the weeds.
+
+How about just, when does increasing the cluster input result in less than a 5% average change in Moran's I?
+
+```{r}
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 8*5)
+
+# set cluster to narrower range
+clusters <- rep(seq(10, 25, 2), each = 3*5)
+
+ls_stat_list <- map2_df(
+  .x = props,
+  .y = clusters,
+  .f = function(x, y){
+    ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
+    return(ls$ls_stats)
+  },
+  .progress = TRUE)
+
+
+ggplot(ls_stat_list, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_smooth()
+```
+
+Looks like it levels off between 14 and 20
+
+```{r}
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 7*5)
+
+# set cluster to narrower range
+clusters <- rep(seq(14, 20, 1), each = 3*5)
+
+ls_stat_list2 <- map2_df(
+  .x = props,
+  .y = clusters,
+  .f = function(x, y){
+    ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
+    return(ls$ls_stats)
+  },
+  .progress = TRUE)
+
+ggplot(ls_stat_list2, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_smooth()
+```
+
+Perhaps between 15 and 18?
+
+```{r}
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 4*30)
+
+# set cluster to narrower range
+clusters <- rep(seq(15, 18, 1), each = 3*30)
+
+ls_stat_list3 <- map2_df(
+  .x = props,
+  .y = clusters,
+  .f = function(x, y){
+    ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
+    return(ls$ls_stats)
+  },
+  .progress = TRUE)
+
+
+library(furrr)
+ls_stat_list3 <- future_map2_dfr(
+  .x = c(.1, .1),
+  .y = c(0, 5),
+  .f = function(x, y){
+    ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
+    return(ls$ls_stats)
+  },
+  seed = TRUE,
+  .progress = TRUE)
+```
