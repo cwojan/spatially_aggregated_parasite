@@ -1,0 +1,179 @@
+---
+title: "sdp_recovery_sensitivity"
+format: html
+editor: visual
+---
+
+## Recovery Sensitivity Analysis
+
+This document assesses how current burden dynamics change with different recovery rates. The goal is to determine the best parameter space to use.
+
+### Setup
+
+```{r}
+## load code
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+```
+
+Now let's select a few landscapes across the spectrum of density and clustering
+
+```{r}
+
+## create a list key
+ls_key <- map_df(ls_list, function(x){x$ls_stats}, .id = "element_id")
+
+## grab 9 landscapes
+ls_sub_ids <- ls_key %>%
+  filter(prop %in% c(0.1, 0.5, 0.9), cluster %in% c(0, 6, 15)) %>%
+  mutate(element_id = as.numeric(element_id)) %>%
+  pull(element_id)
+
+## subset list
+ls_subset <- ls_list[ls_sub_ids]
+```
+
+### Recovery Sensitivity Analysis
+
+let's start super wide
+
+```{r}
+## create vector of recovery probabilities
+recovs <- rep((1:9) / 10, 9)
+## create replicated list for mapping
+ls_rep <- rep(ls_subset, each = 9)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+recov_tests <- future_map2_dfr(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100,
+                n_reps = 30, recov_prob = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+```
+
+Now analyze
+
+```{r}
+## check structure
+glimpse(recov_tests)
+
+recov_sum <- recov_tests %>%
+  group_by(prop, cluster, recov_prob, time) %>%
+  summarize(mean_burden = mean(cur_burden),
+            var_burden = var(cur_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  mutate(disp_change = c(diff(disp_burden), NA),
+         disp_change_pct = disp_change / disp_burden)
+
+ggplot(recov_sum, aes(x = time, y = disp_burden, color = factor(recov_prob))) +
+  geom_point() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+
+ggplot(recov_sum %>% filter(recov_prob == 0.1), aes(x = time, y = disp_change_pct, color = factor(recov_prob))) +
+  geom_point() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+
+recov_dists <- recov_tests %>%
+  filter(time == 100)
+
+ggplot(recov_dists %>% filter(recov_prob == 0.1), aes(x = cur_burden, color = factor(recov_prob))) +
+  geom_histogram() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+```
+
+Let's try very low recov probs
+
+```{r}
+## create vector of low recovery probabilities
+recovs <- rep((1:9) / 100, 9)
+## create replicated list for mapping
+ls_rep <- rep(ls_subset, each = 9)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+recov_tests_low <- future_map2_dfr(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100,
+                n_reps = 30, recov_prob = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+
+recov_sum_low <- recov_tests_low %>%
+  group_by(prop, cluster, recov_prob, time) %>%
+  summarize(mean_burden = mean(cur_burden),
+            var_burden = var(cur_burden),
+            disp_burden = var_burden / mean_burden) %>%
+  mutate(disp_change = c(diff(disp_burden), NA),
+         disp_change_pct = disp_change / disp_burden)
+
+recov_dists_low <- recov_tests_low %>%
+  filter(time == 100)
+
+ggplot(recov_dists_low %>% filter(recov_prob == 0.05), aes(x = cum_burden, color = factor(recov_prob))) +
+  geom_histogram() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+
+ggplot(recov_sum_low, aes(x = time, y = disp_burden, color = factor(recov_prob))) +
+  geom_point() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+```
+
+Okay so you need extremely low recovery probs to get a continual increase in dispersion, but how does that compare to cumulative burden?
+
+```{r}
+burden_compare <- recov_tests_low %>%
+  group_by(prop, cluster, recov_prob, time) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+
+ggplot(burden_compare, aes(x = time, y = disp_diff, color = factor(recov_prob))) +
+  geom_point() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+
+hist(recov_tests_low %>% filter(recov_prob == 0.05) %>% pull(durations))
+
+durs <- recov_tests_low %>% filter(recov_prob == 0.05) %>% pull(durations)
+
+ind_burd_compare <- recov_tests_low %>%
+  mutate(burden_diff = cur_burden - cum_burden) %>%
+  group_by(prop, cluster, recov_prob, time) %>%
+  summarise(mean_diff = mean(burden_diff))
+
+ggplot(ind_burd_compare, aes(x = time, y = mean_diff, color = factor(recov_prob))) +
+  geom_point() +
+  facet_grid(cols = vars(factor(prop)), rows = vars(factor(cluster))) +
+  scale_color_viridis_d()
+
+```
+
+Once you get sub 0.05, cur burden doesn't differ much from cum burden. above 0.3 burdens get pretty binary.
