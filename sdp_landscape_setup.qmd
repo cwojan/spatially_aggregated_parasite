@@ -1,0 +1,47 @@
+---
+title: "sdp_landscape_setup"
+format: html
+editor: visual
+---
+
+## Landscape Setup
+
+This document features code to setup landscapes for simulations.
+
+### Setup
+
+```{r}
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+```
+
+### Percolation
+
+```{r}
+## save proportions (parasite densities)
+props <- rep((1:9)/10, 16)
+
+## save clustering inputs
+clusters <- rep(0:15, each = 9)
+
+## setup multisession computing
+plan(multisession)
+
+## percolate landscapes
+ls_list <- future_map2(
+  .x = props,
+  .y = clusters,
+  ~fast_ls_perc(size = 48, prop = .x, cluster = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE)
+```
+
+save
+
+```{r}
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(ls_list, str_c("sim_output/ls_list_", timestamp, ".rds"))
+```
