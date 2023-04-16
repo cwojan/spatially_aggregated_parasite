@@ -194,7 +194,7 @@ Perhaps between 15 and 18?
 props <- rep(c(0.1, 0.5, 0.9), 4*30)
 
 # set cluster to narrower range
-clusters <- rep(seq(15, 18, 1), each = 3*30)
+clusters <- rep(seq(1, 18, 1), each = 3*30)
 
 ls_stat_list3 <- map2_df(
   .x = props,
@@ -207,13 +207,92 @@ ls_stat_list3 <- map2_df(
 
 
 library(furrr)
+plan(multisession)
+Sys.time()
 ls_stat_list3 <- future_map2_dfr(
-  .x = c(.1, .1),
-  .y = c(0, 5),
+  .x = props,
+  .y = clusters,
   .f = function(x, y){
     ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
     return(ls$ls_stats)
   },
-  seed = TRUE,
+  .options = furrr_options(seed = TRUE),
   .progress = TRUE)
+Sys.time()
+
+
+ggplot(ls_stat_list3, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_point()
+
+ls_stat_list3 <- ls_stat_list3 %>%
+  mutate(cluster = as.factor(cluster))
+
+ls_stat_sum <- ls_stat_list3 %>%
+  group_by(prop, cluster) %>%
+  summarize(mean = mean(moran)) %>%
+  mutate(change = c(diff(mean), NA),
+        change_pct = change / mean)
+```
+
+```{r}
+# set proportions to wide range
+props <- rep(c(0.5), 5*10)
+
+# set cluster to narrower range
+clusters <- rep(seq(13, 17, 1), each = 10)
+
+ls_stat_list4 <- future_map2_dfr(
+  .x = props,
+  .y = clusters,
+  .f = function(x, y){
+    ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
+    return(ls$ls_stats)
+  },
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE)
+
+ggplot(ls_stat_list4, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_point()
+
+ls_stat_sum <- ls_stat_list4 %>%
+  group_by(prop, cluster) %>%
+  summarize(mean = mean(moran)) %>%
+  mutate(change = c(diff(mean), NA),
+        change_pct = change / mean)
+
+```
+
+15 should be the maximum cluster input, but does there need to be better documentation?
+
+```{r}
+# set proportions to wide range
+props <- rep(c(0.1, 0.5, 0.9), 10*30)
+
+# set cluster to narrower range
+clusters <- rep(seq(11, 20, 1), each = 3*30)
+
+plan(sequential)
+plan(multisession)
+ls_stat_final <- future_map2_dfr(
+  .x = props,
+  .y = clusters,
+  .f = function(x, y){
+    ls <- fast_ls_perc(size = 48, prop = x, cluster = y)
+    return(ls$ls_stats)
+  },
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE)
+
+ggplot(ls_stat_final, aes(x = cluster, y = moran, color = factor(prop))) +
+  geom_point()
+
+ls_stat_sum <- ls_stat_final %>%
+  group_by(prop, cluster) %>%
+  summarize(mean = mean(moran)) %>%
+  mutate(change = c(diff(mean), NA),
+        change_pct = change / mean)
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_csv(ls_stat_final, str_c("sim_output/ls_stats_10thru20_", timestamp,".csv"))
+write_csv(ls_stat_sum, str_c("sim_output/ls_stat_sum_10thru20_", timestamp, ".csv"))
 ```
