@@ -1,0 +1,266 @@
+---
+title: "sdp_sim_w_recovery"
+format: html
+editor: visual
+---
+
+## Running Simulations with Recovery
+
+This document features code to run simulations across 144 landscapes with different recovery rates.
+
+### Setup
+
+```{r}
+## load code
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+```
+
+### Simulate
+
+```{r}
+## create vector of recovery probabilities
+recovs <- rep(c(0.05, 0.15, 0.25), 144)
+## create replicated list for mapping
+ls_rep <- rep(ls_list, each = 3)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+recov_sims <- future_map2(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100,
+                n_reps = 10, recov_prob = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+plan(sequential)
+
+## save simulations
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(recov_sims, str_c("sim_output/recov_sims_", timestamp, ".rds"))
+
+## filter out a dataframe
+recov_sim_data <- map_df(
+  recov_sims,
+  function(x){
+    filter(x, time == 100)
+  }
+)
+
+rm(recov_sims)
+
+write_rds(recov_sim_data, str_c("sim_output/recov_sim_data", timestamp, ".rds"))
+
+recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_093356.rds")
+```
+
+### Analyze
+
+Question 1
+
+```{r}
+
+q1_data <- recov_sim_data %>%
+  filter(recov_prob == 0.15) %>%
+  group_by(prop, cluster, moran, rep_id) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+## mean
+q1_plot <- function(yval){
+  ggplot(q1_data, aes(x = moran, y = .data[[yval]], color = factor(prop))) +
+    geom_point() +
+    geom_smooth(se = FALSE, method = "lm") +
+    scale_color_viridis_d() +
+    theme_bw()
+}
+
+q1_plot("mean_cur")
+q1_plot("mean_cum")
+q1_plot("var_cur")
+q1_plot("disp_cur")
+q1_plot("disp_cum")
+
+q1_disp_comp <- q1_data %>%
+  select(prop, cluster, moran, rep_id, disp_cur, disp_cum) %>%
+  pivot_longer(cols = c(disp_cur, disp_cum), names_prefix = "disp_", names_to = "burden", values_to = "dispersion")
+
+ggplot(q1_disp_comp, aes(x = moran, y = dispersion, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(vars(burden)) +
+  scale_color_viridis_d() +
+  theme_bw()
+```
+
+Scales to different to compare cumulative to current burdens
+
+Question 2
+
+```{r}
+q2_data <- recov_sim_data %>%
+  group_by(prop, cluster, moran, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+ggplot(q2_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d() +
+  theme_bw()
+
+ggplot(q2_data, aes(x = moran, y = disp_cum, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d() +
+  theme_bw()
+```
+
+Well-mixed model scratch
+
+```{r}
+dat <- tibble(S = 96)
+
+compartments <- str_c("I", 0:50)
+values <- c(96, rep(0, 50))
+names(values) <- compartments
+dat <- values %>%
+  as.matrix() %>%
+  t() %>%
+  as.data.frame()
+
+for(i in 1:100){
+  cur_dat <- dat[i,]
+  cur_dat <- cur_dat %>%
+    mutate(I0 = (0.75*I0) + (0.15*I1))
+  for(j in 1:49){
+    comp_j <- str_c("I", j)
+    comp_jminus <- str_c("I", j - 1)
+    comp_jplus <- str_c("I", j + 1)
+    cur_dat[,comp_j] <- (0.60 * cur_dat[,comp_j]) + (0.25*cur_dat[,comp_jminus]) + (0.15*cur_dat[,comp_jplus])
+  }
+  dat <- bind_rows(dat, cur_dat)
+}
+
+dat_end <- dat %>%
+  mutate(time = 0:100) %>%
+  filter(time == 100) %>%
+  select(!time) %>%
+  pivot_longer(cols = everything(), names_prefix = "I", names_to = "parasites", values_to = "hosts") %>%
+  mutate(parasites = as.numeric(parasites),
+         round_hosts = round(hosts))
+
+burdens <- map(dat_end$parasites, function(x){
+  rep(x, dat_end %>% filter(parasites == x) %>% pull(round_hosts))
+})
+
+burdens <- unlist(burdens)
+hist(burdens)
+var(burdens)
+mean(burdens)
+var(burdens)/mean(burdens)
+
+burdens
+
+ggplot(dat_end, aes(x = parasites, y = round_hosts)) +
+  geom_col()
+
+glmp <- glm(burdens ~ 1, family = "poisson")
+summary(glmp)
+exp(2.69747)
+
+library(MASS)
+glmnb <- MASS::glm.nb(burdens ~ 1)
+summary(glmnb)
+```
+
+Not sure what to think about this....
+
+#### Cumulative vs Current
+
+```{r}
+recov_sim_data <- recov_sim_data %>% mutate(burden_diff = cur_burden - cum_burden)
+
+burden_diff_sum <- recov_sim_data %>%
+  group_by(prop, cluster, moran, rep_id, recov_prob) %>%
+  summarize(mean_diff = mean(burden_diff),
+            sd_diff = sd(burden_diff))
+  
+
+ggplot(burden_diff_sum, aes(x = moran, y = sd_diff, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d() +
+  theme_bw()
+
+burden_comp <- recov_sim_data %>%
+  filter(prop %in% c(0.1, 0.5, 0.9), cluster %in% c(0, 7, 15)) %>%
+  ungroup()
+
+ggplot(burden_comp, aes(x = cur_burden, y = cum_burden, color = factor(recov_prob))) +
+  #geom_point(alpha = 0.01) +
+  geom_smooth(method = "lm") +
+  geom_abline(slope = 1, intercept = 0) +
+  facet_grid(rows = vars(prop), cols = vars(cluster)) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_bw()
+
+
+test_lm <- lm(cum_burden ~ cur_burden, data = burden_comp %>% filter(prop == 0.9, cluster == 15, recov_prob == 0.15))
+
+
+library(broom)
+temp_dat <- filter(burden_comp, prop == 0.9, cluster == 15, recov_prob == 0.15)
+cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy()
+
+combos <- data.frame(prop = rep(c(0.1, 0.5, 0.9), 9),
+                 cluster = rep(c(0, 7, 15), each = 9),
+                 recov_prob = rep(rep(c(0.05, 0.15, 0.25), each = 3), 3))
+
+cors <- map_df(
+  1:27,
+  function(x){
+    temp_prop <- combos[x, "prop"]
+    temp_cluster <- combos[x, "cluster"]
+    temp_recov <- combos[x,"recov_prob"]
+    temp_dat <- filter(burden_comp, prop == temp_prop, cluster == temp_cluster, recov_prob == temp_recov)
+    cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy() %>%
+      mutate(prop = temp_prop, cluster = temp_cluster, recov_prob = temp_recov)
+  }) %>%
+  arrange(estimate)
+
+x <- 2
+temp_dat <- burden_comp %>% dplyr::filter(prop == combos[x, "prop"], cluster == combos[x, "cluster"], recov_prob == combos[x,"recov_prob"])
+
+ggplot(cors, aes(x = cluster, y = estimate, color = factor(prop))) +
+  geom_point() +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d() +
+  theme_bw()
+```
