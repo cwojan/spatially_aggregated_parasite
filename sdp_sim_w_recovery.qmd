@@ -126,6 +126,9 @@ q2_data <- recov_sim_data %>%
             mean_diff = mean_cur - mean_cum,
             var_diff = var_cur - var_cum)
 
+test_lm <- lm(disp_cur ~ prop + moran + recov_prob, data = q2_data)
+summary(test_lm)
+
 ggplot(q2_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
   geom_point() +
   geom_smooth(se = FALSE, method = "lm") +
@@ -255,11 +258,28 @@ cors <- map_df(
   }) %>%
   arrange(estimate)
 
+414720 / 960
+432/3
+
+
+cors <- map_df(
+  seq(1, nrow(recov_sim_data), by = 96),
+  function(x){
+    sim_rows <- x:(x+95)
+    temp_dat <- recov_sim_data[sim_rows,]
+    temp_prop <- temp_dat$prop %>% unique()
+    temp_moran <- temp_dat$moran %>% unique()
+    temp_recov <- temp_dat$recov_prob %>% unique()
+    cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy() %>%
+      mutate(prop = temp_prop, moran = temp_moran, recov_prob = temp_recov)
+  }) 
+
 x <- 2
 temp_dat <- burden_comp %>% dplyr::filter(prop == combos[x, "prop"], cluster == combos[x, "cluster"], recov_prob == combos[x,"recov_prob"])
 
-ggplot(cors, aes(x = cluster, y = estimate, color = factor(prop))) +
-  geom_point() +
+ggplot(cors, aes(x = moran, y = estimate)) +
+  geom_point(aes(color = factor(prop))) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d() +
   theme_bw()
