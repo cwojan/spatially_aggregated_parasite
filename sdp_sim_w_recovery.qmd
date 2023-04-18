@@ -284,3 +284,27 @@ ggplot(cors, aes(x = moran, y = estimate)) +
   scale_color_viridis_d() +
   theme_bw()
 ```
+
+#### Variance of Individual Burdens
+
+```{r}
+recov_sims <- read_rds("sim_output/recov_sims_20230417_132954.rds")
+
+burden_vars <- map_df(
+  recov_sims,
+  function(x){
+    temp_sum <- x %>%
+      group_by(prop, moran, recov_prob, rep_id, host_id) %>%
+      summarize(mean_burden = mean(cur_burden),
+                var_burden = var(cur_burden))
+  },
+  .id = "sim_id",
+  .progress = TRUE
+)
+
+ggplot(burden_vars, aes(x = moran, y = var_burden)) +
+  stat_summary(fun.data = "mean_cl_boot", aes(color = factor(prop))) +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d() +
+  theme_bw()
+```
