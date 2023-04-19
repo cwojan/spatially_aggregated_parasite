@@ -41,7 +41,7 @@ fig1 <- ggplot(f1_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
   geom_smooth(se = FALSE, method = "lm", linewidth = 3) +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
-  labs(y = "Dispersion of Parasite Burdens") +
+  labs(y = "Acute Burden Dispersion") +
   scale_x_continuous(name = "Parasite Clustering (Morans I)", 
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
@@ -74,7 +74,7 @@ fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
   geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 3) +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
-  labs(y = "Correlation between \nAcute Parasite Burden \nand Cumulative Infection") +
+  labs(y = "Correlation between Acute \nand Cumulative Burden") +
   scale_x_continuous(name = "Parasite Clustering (Morans I)", 
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
@@ -85,8 +85,6 @@ fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
         strip.text = element_text(size = 24),
         axis.title = element_text(size = 32),
         axis.text = element_text(size = 16))
-
-fig2
 ```
 
 ### Figure 3
