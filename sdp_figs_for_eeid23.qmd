@@ -14,7 +14,7 @@ library(tidyverse)
 library(broom)
 
 ## load data
-recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_093356.rds")
+recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
 
 ## load ls data
 ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
