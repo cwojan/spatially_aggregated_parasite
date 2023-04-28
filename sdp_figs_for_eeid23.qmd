@@ -113,8 +113,8 @@ ls_plots <- ggplot(data = ls_list_coords) +
   scale_color_manual(values = c("white", "salmon"), guide = "none") +
   coord_fixed() +
   facet_grid(rows = vars(cluster), cols = vars(prop)) +
-  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Cluster Factor", breaks = NULL, labels = NULL)) +
-  scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Proportion", breaks = NULL, labels = NULL)) +
+  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Clustering Input", breaks = NULL, labels = NULL)) +
+  scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Proportion (Density)", breaks = NULL, labels = NULL)) +
   theme_bw() +
   theme(axis.text = element_blank(),
         axis.ticks = element_blank(),
