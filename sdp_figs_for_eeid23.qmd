@@ -41,7 +41,7 @@ fig1 <- ggplot(f1_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
   geom_smooth(se = FALSE, method = "lm", linewidth = 3) +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
-  labs(y = "Acute Burden Dispersion") +
+  labs(y = "'Snapshot' Burden Dispersion") +
   scale_x_continuous(name = "Parasite Clustering (Moran's I)", 
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
@@ -74,7 +74,7 @@ fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
   geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 3) +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
-  labs(y = "Correlation between Acute \nand Cumulative Burden") +
+  labs(y = "Correlation between 'Snapshot' \nand Cumulative Burden") +
   scale_x_continuous(name = "Parasite Clustering (Moran's I)", 
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
@@ -109,12 +109,12 @@ ls_list_coords <- map_df(ls_subset, function(x)
 
 ls_plots <- ggplot(data = ls_list_coords) +
   geom_tile(aes(x = x, y = y, fill = factor(value), color = factor(value))) +
-  scale_fill_manual(values = c("white", "salmon"), guide = "none") +
-  scale_color_manual(values = c("white", "salmon"), guide = "none") +
+  scale_fill_manual(values = c("white", "#7A0019"), guide = "none") +
+  scale_color_manual(values = c("white", "#7A0019"), guide = "none") +
   coord_fixed() +
   facet_grid(rows = vars(cluster), cols = vars(prop)) +
-  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Clustering Input", breaks = NULL, labels = NULL)) +
-  scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Proportion (Density)", breaks = NULL, labels = NULL)) +
+  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Clustering", breaks = NULL, labels = NULL)) +
+  scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Density", breaks = NULL, labels = NULL)) +
   theme_bw() +
   theme(axis.text = element_blank(),
         axis.ticks = element_blank(),
@@ -122,7 +122,6 @@ ls_plots <- ggplot(data = ls_list_coords) +
         axis.title = element_text(size = 32),
         strip.text = element_text(size = 24))
 
-ls_plots
 ```
 
 ### Save
