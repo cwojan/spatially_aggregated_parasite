@@ -52,7 +52,8 @@ fig1 <- ggplot(f1_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
         legend.text = element_text(size = 16),
         strip.text = element_text(size = 24),
         axis.title = element_text(size = 32),
-        axis.text = element_text(size = 16))
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
 ```
 
 ### Figure 2
@@ -86,7 +87,8 @@ fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
         legend.text = element_text(size = 16),
         strip.text = element_text(size = 24),
         axis.title = element_text(size = 32),
-        axis.text = element_text(size = 16))
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
 ```
 
 ### Figure 3
