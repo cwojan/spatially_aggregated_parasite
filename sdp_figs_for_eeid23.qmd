@@ -124,6 +124,8 @@ ls_plots <- ggplot(data = ls_list_coords) +
         axis.ticks = element_blank(),
         panel.grid = element_blank(),
         axis.title = element_text(size = 32),
+        axis.title.x.top = element_text(size = 32, vjust = 1),
+        axis.title.y.right = element_text(size = 32, vjust = 1),
         strip.text = element_text(size = 24))
 
 ```
