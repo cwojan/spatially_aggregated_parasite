@@ -98,3 +98,14 @@ timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
 ggsave(str_c("figures/sdp_ms_fig3_", timestamp, ".tiff"), plot = fig1,
        units = "in", width = 12, height = 8)
 ```
+
+### Checking distributions
+
+```{r}
+
+recov_sim_data %>%
+  filter(prop == 0.5, cluster == 15) %>%
+  ggplot(aes(x = cur_burden)) +
+  geom_histogram() +
+  facet_wrap(vars(recov_prob))
+```
