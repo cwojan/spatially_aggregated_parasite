@@ -1,0 +1,100 @@
+---
+title: "sdp_hoover_index_analysis"
+format: html
+editor: visual
+---
+
+## Analyzing Simulation Results with the Hoover Index
+
+This script calculates the Hoover index value for each simulation of a set. Hoover index varies from 0 to one, representing the proportion of parasites needed to be rearranged to generate an even distribution among hosts (0, means already even, \~1 means highly aggregated). See McVinish and LEster (2020) "Measuring aggregation in parasite populations"
+
+### Setup
+
+```{r}
+## load code
+library(tidyverse)
+
+## load sim data
+recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
+```
+
+### Calculate
+
+```{r}
+
+## create a hoover index function
+
+## make dummy parasite burden data
+burdens <- rpois(n = 96, lambda = 10)
+
+## sketch out steps
+mean_burden <- mean(burdens)
+hoover <- sum(abs(burdens - mean_burden))/(2*length(burdens)*mean_burden)
+
+## write generic function
+hoover_index <- function(values){
+  mean_val <- mean(values)
+  hoover <- sum(abs(values - mean_val))/(2*length(values)*mean_val)
+  return(hoover)
+}
+
+
+## test function for a single simulation
+
+recov_sim_data <- mutate(recov_sim_data,
+                         sim_id = str_c(prop, cluster, recov_prob, rep_id, sep = "_"))
+single_sim <- filter(recov_sim_data, sim_id == "0.1_0_0.05_1")
+
+test_hi <- hoover_index(single_sim$cur_burden)
+
+## do for all sims
+summary_data <- recov_sim_data %>%
+  group_by(prop, cluster, moran, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum,
+            hoover = hoover_index(cur_burden))
+
+
+```
+
+### Visualize
+
+```{r}
+
+##plot hoover index
+
+fig1 <- ggplot(summary_data, aes(x = moran, y = hoover, color = factor(prop))) +
+  geom_point(size = 4) +
+  geom_smooth(se = FALSE, method = "lm", linewidth = 3) +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "Hoover Index of \n'Snapshot' Burden Distribution") +
+  scale_x_continuous(name = "Parasite Clustering (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18),
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 16),
+        strip.text = element_text(size = 24),
+        axis.title = element_text(size = 32),
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
+
+
+## save hoover index plot
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+## save fig 1
+ggsave(str_c("figures/sdp_ms_fig3_", timestamp, ".tiff"), plot = fig1,
+       units = "in", width = 12, height = 8)
+```
