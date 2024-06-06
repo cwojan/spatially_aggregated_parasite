@@ -1,0 +1,49 @@
+---
+title: "sdp_nonspatial_model"
+format: html
+editor: visual
+---
+
+## Comparing Spatial ABM to a Non-Spatial Model
+
+### Setup
+
+```{r}
+
+```
+
+### Create Non-Spatial Model Function
+
+Inputs needed:
+
+-Probability of parasite acquisition (0.5 \* density)
+
+-Probability of parasite loss (recovery rate)
+
+-timesteps / number of draws
+
+```{r}
+## test
+acquire <- 0.5 * 0.5
+loss <- 0.05
+times <- 100
+hosts <- 96
+
+
+test_data <- tibble(host = rep(1:hosts, each = time),
+                    time = rep(1:times, hosts))
+
+infection <- test_data %>%
+  mutate(parasite_gain = rbinom(n = n(), size = 1, prob = acquire),
+         duration = rnbinom(n = n(), size = 1, prob = loss),
+         lose_point = time + duration,
+         lost = parasite_gain * as.numeric(lose_point <= 100)) %>%
+  group_by(host) %>%
+  mutate(cum_burden = cumsum(parasite_gain),
+         cum_losses = cumsum(lost),
+         cur_burden = cum_burden - cum_losses) %>%
+  filter(time == times)
+
+
+
+```
