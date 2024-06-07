@@ -136,6 +136,10 @@ ggplot(data = comp_summary, aes(x = sim_type, y = disp_cur, color = prop)) +
   facet_wrap(vars(recov_prob)) +
   theme_bw()
 
+test_lm <- lm(var_cur ~ sim_type + prop + recov_prob, data = comp_summary)
+
+summary(test_lm)
+
 ggplot(data = comp_summary, aes(x = sim_type, y = var_cur, color = prop)) +
   geom_jitter() +
   facet_wrap(vars(recov_prob)) +
