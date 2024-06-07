@@ -10,6 +10,7 @@ editor: visual
 
 ```{r}
 
+library(tidyverse)
 ```
 
 ### Create Non-Spatial Model Function
@@ -30,7 +31,7 @@ times <- 100
 hosts <- 96
 
 
-test_data <- tibble(host = rep(1:hosts, each = time),
+test_data <- tibble(host = rep(1:hosts, each = times),
                     time = rep(1:times, hosts))
 
 infection <- test_data %>%
@@ -45,5 +46,106 @@ infection <- test_data %>%
   filter(time == times)
 
 
+## write generic function
 
+nonspatial_parasite_sim <- function(prop, n_hosts = 96, n_times = 100, 
+                                    infec_prob = 0.5, recov_prob, n_reps){
+  
+  host_data <- tibble(host = rep(rep(1:n_hosts, each = n_times), n_reps),
+                      time = rep(rep(1:n_times, n_hosts), n_reps),
+                      rep_id = rep(1:n_reps, each = n_hosts * n_times),
+                      prop = prop,
+                      infec_prob = infec_prob,
+                      recov_prob = recov_prob)
+  
+  infected <- host_data %>%
+    mutate(parasite_gain = rbinom(n = n(), size = 1, prob = prop * infec_prob),
+           duration = rnbinom(n = n(), size = 1, prob = recov_prob),
+           lose_point = time + duration,
+           lost = parasite_gain * as.numeric(lose_point <= 100)) %>%
+    group_by(host, rep_id) %>%
+    mutate(cum_burden = cumsum(parasite_gain),
+           cum_losses = cumsum(lost),
+           cur_burden = cum_burden - cum_losses) %>%
+    filter(time == n_times)
+  
+  return(infected)
+}
+
+## test function
+
+test_out <- nonspatial_parasite_sim(prop = 0.9, recov_prob = 0.05, n_reps = 10)
+```
+
+works!
+
+### Run many non spatial "simulations"
+
+```{r}
+
+densities <- rep((1:9)/10, 3)
+recovs <- rep(c(0.05, 0.15, 0.25), each = 9)
+
+ns_sim_output <- map2(
+  .x = densities,
+  .y = recovs,
+  ~nonspatial_parasite_sim(prop = .x, recov_prob = .y, n_reps = 10)
+) %>%
+  bind_rows()
+```
+
+### Compare sims
+
+```{r}
+
+recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
+
+nc_summary <- recov_sim_data %>%
+  filter(cluster == 0) %>%
+  group_by(prop, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+ns_summary <- ns_sim_output %>%
+  group_by(prop, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+## combine data
+comp_summary <- nc_summary %>%
+  mutate(sim_type = "spatial") %>%
+  bind_rows(ns_summary %>% mutate(sim_type = "non_spatial"))
+
+
+ggplot(data = comp_summary, aes(x = sim_type, y = disp_cur, color = prop)) +
+  geom_jitter() +
+  facet_wrap(vars(recov_prob)) +
+  theme_bw()
+
+ggplot(data = comp_summary, aes(x = sim_type, y = var_cur, color = prop)) +
+  geom_jitter() +
+  facet_wrap(vars(recov_prob)) +
+  theme_bw()
+
+ggplot(data = nc_sim_data, aes(x = cum_burden)) +
+  geom_histogram() +
+  facet_grid(rows = vars(prop), cols = vars(recov_prob))
+
+ggplot(data = ns_sim_output, aes(x = cum_burden)) +
+  geom_histogram() +
+  facet_grid(rows = vars(prop), cols = vars(recov_prob))
 ```
