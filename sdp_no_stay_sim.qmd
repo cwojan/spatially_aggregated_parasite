@@ -1,0 +1,73 @@
+---
+title: "sdp_no_stay_sim"
+format: html
+editor: visual
+---
+
+## Running Simulations with No-Stay Movement rules
+
+This document features code to run simulations across the unclustered landscapes with hosts moving at every timestep.
+
+### Setup
+
+```{r}
+## load code
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+
+## filter for only landscapes with no clustering
+ls_subset <- map(.x = ls_list, .f = function(x){
+  if(x$ls_stats$cluster == 0){return(x)}
+})
+ls_subset <- ls_subset[!unlist(map(.x = ls_subset, .f = function(x){is.null(x)}))]
+
+rm(ls_list)
+
+```
+
+### Simulate
+
+```{r}
+## create vector of recovery probabilities
+recovs <- rep(c(0.05, 0.15, 0.25), 9)
+## create replicated list for mapping
+ls_rep <- rep(ls_subset, each = 3)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+nostay_sims <- future_map2(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100,
+                n_reps = 10, recov_prob = .y, movetypes = tibble(type = 0, prop = 1)),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+plan(sequential)
+
+## save simulations
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(nostay_sims, str_c("sim_output/nostay_sims_", timestamp, ".rds"))
+
+## filter out a dataframe
+nostay_sim_data <- map_df(
+  nostay_sims,
+  function(x){
+    filter(x, time == 100)
+  }
+)
+
+rm(nostay_sims)
+
+write_rds(nostay_sim_data, str_c("sim_output/nostay_sim_data", timestamp, ".rds"))
+
+
+```

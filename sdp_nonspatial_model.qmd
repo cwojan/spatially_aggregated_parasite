@@ -100,7 +100,22 @@ ns_sim_output <- map2(
 
 recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
 
-nc_summary <- recov_sim_data %>%
+nostay_sim_data <- read_rds("sim_output/nostay_sim_data20240611_130259.rds")
+
+stay_summary <- recov_sim_data %>%
+  filter(cluster == 0) %>%
+  group_by(prop, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+nostay_summary <- nostay_sim_data%>%
   filter(cluster == 0) %>%
   group_by(prop, rep_id, recov_prob) %>%
   summarize(mean_cur = mean(cur_burden),
@@ -126,14 +141,16 @@ ns_summary <- ns_sim_output %>%
             var_diff = var_cur - var_cum)
 
 ## combine data
-comp_summary <- nc_summary %>%
-  mutate(sim_type = "spatial") %>%
-  bind_rows(ns_summary %>% mutate(sim_type = "non_spatial"))
+comp_summary <- stay_summary %>%
+  mutate(sim_type = "spatial_w_stay") %>%
+  bind_rows(ns_summary %>% mutate(sim_type = "non_spatial"),
+            nostay_summary %>% mutate(sim_type = "spatial_no_stay"))
 
 
-ggplot(data = comp_summary, aes(x = sim_type, y = disp_cur, color = prop)) +
-  geom_jitter() +
-  facet_wrap(vars(recov_prob)) +
+ggplot(data = comp_summary, aes(x = prop, y = var_cur, color = sim_type)) +
+  geom_jitter(width = 0.01) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(vars(recov_prob), nrow = 3) +
   theme_bw()
 
 test_lm <- lm(var_cur ~ sim_type + prop + recov_prob, data = comp_summary)
@@ -145,11 +162,15 @@ ggplot(data = comp_summary, aes(x = sim_type, y = var_cur, color = prop)) +
   facet_wrap(vars(recov_prob)) +
   theme_bw()
 
-ggplot(data = nc_sim_data, aes(x = cum_burden)) +
+ggplot(data = recov_sim_data %>% filter(cluster == 0), aes(x = cum_burden)) +
   geom_histogram() +
   facet_grid(rows = vars(prop), cols = vars(recov_prob))
 
 ggplot(data = ns_sim_output, aes(x = cum_burden)) +
+  geom_histogram() +
+  facet_grid(rows = vars(prop), cols = vars(recov_prob))
+
+ggplot(data = nostay_sim_data, aes(x = cum_burden)) +
   geom_histogram() +
   facet_grid(rows = vars(prop), cols = vars(recov_prob))
 ```
