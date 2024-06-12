@@ -16,6 +16,7 @@ library(tidyverse)
 library(furrr)
 library(ape)
 library(som.nn)
+library(broom)
 source("parasite_sim_functions.R")
 
 ## load ls data
@@ -57,6 +58,14 @@ plan(sequential)
 timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
 write_rds(long_sims, str_c("sim_output/long_sims_", timestamp, ".rds"))
 
+
+```
+
+### Examine
+
+```{r}
+long_sims <- read_rds("sim_output/long_sims_20240612_103629.rds")
+
 ## filter something easier to plot
 long_sim_data <- map_df(
   long_sims,
@@ -82,5 +91,32 @@ ggplot(long_summary, aes(x = time, y = disp_cum, color = prop)) +
   geom_point() +
   facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
   coord_cartesian(xlim = c(0, 500)) +
+  theme_bw()
+
+long_sim_data <- mutate(long_sim_data, sim_id = str_c(prop, cluster, recov_prob, rep_id, sep = "_"))
+
+sim_ids <- rep(unique(long_sim_data$sim_id), each = 50)
+times <- rep(seq(20, 1000, by = 20), 360)
+
+cor_function <- function(a, b){
+    temp_dat <- long_sim_data %>% filter(sim_id == a, time == b)
+    temp_prop <- temp_dat$prop %>% unique()
+    temp_cluster <- temp_dat$cluster %>% unique()
+    temp_recov <- temp_dat$recov_prob %>% unique()
+    result <- cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy() %>%
+      mutate(prop = temp_prop, cluster = temp_cluster, recov_prob = temp_recov, time = b)
+    return(result)
+}
+
+cor_function(a = "0.1_0_0.05_1", b = 20)
+
+cors <- map2_df(
+  .x = sim_ids,
+  .y = times,
+  ~cor_function(a = .x, b = .y)) 
+
+ggplot(cors, aes(x = time, y = p.value, color = prop)) +
+  geom_point() +
+  facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
   theme_bw()
 ```
