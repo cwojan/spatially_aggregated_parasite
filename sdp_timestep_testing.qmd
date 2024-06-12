@@ -1,0 +1,86 @@
+---
+title: "sdp_timestep_testing"
+format: html
+editor: visual
+---
+
+## Testing Simulations Over Longer Times
+
+This document features code to run simulations for 1000 timesteps to show when qualitative patterns emerge.
+
+### Setup
+
+```{r}
+# load code
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+
+## filter for only landscapes with no clustering
+ls_subset <- map(.x = ls_list, .f = function(x){
+  if(x$ls_stats$cluster %in% c(0, 5, 10, 15) & x$ls_stats$prop %in% c(0.1, 0.5, 0.9))
+    {return(x)}
+})
+ls_subset <- ls_subset[!unlist(map(.x = ls_subset, .f = function(x){is.null(x)}))]
+
+rm(ls_list)
+```
+
+### Simulate
+
+```{r}
+## create vector of recovery probabilities
+recovs <- rep(c(0.05, 0.15, 0.25), 12)
+## create replicated list for mapping
+ls_rep <- rep(ls_subset, each = 3)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+long_sims <- future_map2(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 1000,
+                n_reps = 10, recov_prob = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+plan(sequential)
+
+## save simulations
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(long_sims, str_c("sim_output/long_sims_", timestamp, ".rds"))
+
+## filter something easier to plot
+long_sim_data <- map_df(
+  long_sims,
+  function(x){
+    filter(x, time %% 20 == 0 | time == 1)
+  }
+)
+
+long_summary <- long_sim_data %>%
+  filter(time != 0) %>%
+  group_by(prop, rep_id, recov_prob, cluster, time) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+ggplot(long_summary, aes(x = time, y = disp_cum, color = prop)) +
+  geom_point() +
+  facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
+  coord_cartesian(xlim = c(0, 500)) +
+  theme_bw()
+```
