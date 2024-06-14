@@ -87,7 +87,8 @@ long_summary <- long_sim_data %>%
             mean_diff = mean_cur - mean_cum,
             var_diff = var_cur - var_cum)
 
-ggplot(long_summary, aes(x = time, y = disp_cum, color = prop)) +
+
+ggplot(long_summary, aes(x = time, y = disp_cur, color = prop)) +
   geom_point() +
   facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
   coord_cartesian(xlim = c(0, 500)) +

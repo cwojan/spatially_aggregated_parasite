@@ -147,7 +147,7 @@ comp_summary <- stay_summary %>%
             nostay_summary %>% mutate(sim_type = "spatial_no_stay"))
 
 
-ggplot(data = comp_summary, aes(x = prop, y = var_cur, color = sim_type)) +
+ggplot(data = comp_summary, aes(x = prop, y = disp_cur, color = sim_type)) +
   geom_jitter(width = 0.01) +
   geom_smooth(method = "lm", se = FALSE) +
   facet_wrap(vars(recov_prob), nrow = 3) +
