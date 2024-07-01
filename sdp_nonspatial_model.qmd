@@ -143,14 +143,18 @@ ns_summary <- ns_sim_output %>%
 ## combine data
 comp_summary <- stay_summary %>%
   mutate(sim_type = "spatial_w_stay") %>%
-  bind_rows(ns_summary %>% mutate(sim_type = "non_spatial"),
-            nostay_summary %>% mutate(sim_type = "spatial_no_stay"))
+  bind_rows(ns_summary %>% mutate(sim_type = "non_spatial"))
 
 
 ggplot(data = comp_summary, aes(x = prop, y = disp_cur, color = sim_type)) +
-  geom_jitter(width = 0.01) +
+  geom_jitter(width = 0.01, height = 0) +
   geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(vars(recov_prob), nrow = 3) +
+  facet_wrap(vars(recov_prob), ncol = 3) +
+  labs(y = "'Snapshot' Burden Dispersion") +
+    scale_x_continuous(name = "Parasite Density",
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  scale_color_viridis_d(name = "Model Type", labels = c("Non-Spatial", "Spatial"), option = "cividis") +
   theme_bw()
 
 test_lm <- lm(var_cur ~ sim_type + prop + recov_prob, data = comp_summary)
