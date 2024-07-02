@@ -64,7 +64,7 @@ write_rds(long_sims, str_c("sim_output/long_sims_", timestamp, ".rds"))
 ### Examine
 
 ```{r}
-long_sims <- read_rds("sim_output/long_sims_20240612_103629.rds")
+long_sims <- read_rds("sim_output/long_sims_20240702_091817.rds")
 
 ## filter something easier to plot
 long_sim_data <- map_df(
@@ -88,11 +88,35 @@ long_summary <- long_sim_data %>%
             var_diff = var_cur - var_cum)
 
 
-ggplot(long_summary, aes(x = time, y = disp_cur, color = prop)) +
+ggplot(long_summary, aes(x = time, y = disp_cur, color = factor(prop))) +
   geom_point() +
+  geom_smooth(se = FALSE) +
   facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
-  coord_cartesian(xlim = c(0, 500)) +
-  theme_bw()
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  scale_x_continuous(name = "Timestep",
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  scale_y_continuous(name = "'Snapshot' Burden Dispersion",
+                     sec.axis = sec_axis(~ . , name = "Cluster Factor", 
+                                         breaks = NULL, labels = NULL)) +
+  #coord_cartesian(xlim = c(0, 500)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(long_summary, aes(x = time, y = disp_cum, color = factor(prop))) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  scale_x_continuous(name = "Timestep",
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  scale_y_continuous(name = "'Snapshot' Burden Dispersion",
+                     sec.axis = sec_axis(~ . , name = "Cluster Factor", 
+                                         breaks = NULL, labels = NULL)) +
+  #coord_cartesian(xlim = c(0, 500)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
 
 long_sim_data <- mutate(long_sim_data, sim_id = str_c(prop, cluster, recov_prob, rep_id, sep = "_"))
 
@@ -116,8 +140,19 @@ cors <- map2_df(
   .y = times,
   ~cor_function(a = .x, b = .y)) 
 
-ggplot(cors, aes(x = time, y = p.value, color = prop)) +
-  geom_point() +
+write_rds(cors, str_c("sim_output/long_sim_cors", timestamp, ".rds"))
+
+ggplot(cors, aes(x = time, y = estimate, color = factor(prop))) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(se = FALSE, method = "lm") +
   facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
-  theme_bw()
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  scale_x_continuous(name = "Timestep",
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  scale_y_continuous(name = "Correlation between 'Snapshot' and \nCumulative Burdens",
+                     sec.axis = sec_axis(~ . , name = "Cluster Factor", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
 ```
