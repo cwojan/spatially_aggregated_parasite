@@ -1,0 +1,150 @@
+---
+title: "sap_figures"
+format: html
+editor: visual
+---
+
+## Spatially Aggregated Parasite Model Figures
+
+### Setup
+
+```{r}
+## load code
+library(tidyverse)
+library(broom)
+
+## load data
+recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+```
+
+### Figure 1
+
+```{r}
+
+f1_data <- recov_sim_data %>%
+  group_by(prop, cluster, moran, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum)
+
+fig1 <- ggplot(f1_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
+  geom_point(size = 4) +
+  geom_smooth(se = FALSE, method = "lm", linewidth = 3) +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "'Snapshot' Burden Dispersion") +
+  scale_x_continuous(name = "Parasite Clustering (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18),
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 16),
+        strip.text = element_text(size = 24),
+        axis.title = element_text(size = 32),
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
+```
+
+### Figure 2
+
+```{r}
+cors <- map_df(
+  seq(1, nrow(recov_sim_data), by = 96),
+  function(x){
+    sim_rows <- x:(x+95)
+    temp_dat <- recov_sim_data[sim_rows,]
+    temp_prop <- temp_dat$prop %>% unique()
+    temp_moran <- temp_dat$moran %>% unique()
+    temp_recov <- temp_dat$recov_prob %>% unique()
+    cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy() %>%
+      mutate(prop = temp_prop, moran = temp_moran, recov_prob = temp_recov)
+  }) 
+
+fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
+  geom_point(aes(color = factor(prop)), size = 4) +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 3) +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "Correlation between 'Snapshot' \nand Cumulative Burden") +
+  scale_x_continuous(name = "Parasite Clustering (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18),
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 16),
+        strip.text = element_text(size = 24),
+        axis.title = element_text(size = 32),
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
+```
+
+### Figure 3
+
+```{r}
+## create a list key
+ls_key <- map_df(ls_list, function(x){x$ls_stats}, .id = "element_id")
+
+## grab 9 landscapes
+ls_sub_ids <- ls_key %>%
+  filter(prop %in% c(0.2, 0.4, 0.6), cluster %in% c(0, 7, 15)) %>%
+  mutate(element_id = as.numeric(element_id)) %>%
+  pull(element_id)
+
+## subset list
+ls_subset <- ls_list[ls_sub_ids]
+
+## pull coords
+ls_list_coords <- map_df(ls_subset, function(x)
+  {x$coords %>% 
+    bind_cols(x$ls_stats)})
+
+ls_plots <- ggplot(data = ls_list_coords) +
+  geom_tile(aes(x = x, y = y, fill = factor(value), color = factor(value))) +
+  scale_fill_manual(values = c("white", "#7A0019"), guide = "none") +
+  scale_color_manual(values = c("white", "#7A0019"), guide = "none") +
+  coord_fixed() +
+  facet_grid(rows = vars(cluster), cols = vars(prop)) +
+  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Clustering", breaks = NULL, labels = NULL)) +
+  scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Density", breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank(),
+        axis.title = element_text(size = 32),
+        axis.title.x.top = element_text(size = 32, vjust = 1),
+        axis.title.y.right = element_text(size = 32, vjust = 1),
+        strip.text = element_text(size = 24))
+
+```
+
+### Save
+
+```{r}
+
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+## save fig 1
+ggsave(str_c("figures/eeid23_fig1_", timestamp, ".tiff"), plot = fig1,
+       units = "in", width = 12, height = 8)
+
+## save fig 2
+ggsave(str_c("figures/eeid23_fig2_", timestamp, ".tiff"), plot = fig2,
+       units = "in", width = 12, height = 8)
+
+## save fig 3
+ggsave(str_c("figures/eeid23_fig3_", timestamp, ".tiff"), plot = ls_plots,
+       units = "in", width = 8, height = 8)
+```
