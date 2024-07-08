@@ -1,5 +1,5 @@
 ---
-title: "sdp_landscape_setup"
+title: "sap_landscape_setup"
 format: html
 editor: visual
 ---
@@ -10,15 +10,19 @@ This document features code to setup landscapes for simulations.
 
 ### Setup
 
+First load the requisite libraries, as well as the script featuring the landscape percolation function.
+
 ```{r}
 library(tidyverse)
-library(furrr)
+library(furrr) # for parallel computing
 library(ape)
 library(som.nn)
 source("parasite_sim_functions.R")
 ```
 
 ### Percolation
+
+This code block creates the parameter space (parasite density as proportion of cells filled, parasite spatial aggregation as cluster factor) and creates a landscape for each parameter combo. Parallel computing is used for speed, since the landscape percolation algorithm is a bit slow.
 
 ```{r}
 ## save proportions (parasite densities)
@@ -39,7 +43,7 @@ ls_list <- future_map2(
   .progress = TRUE)
 ```
 
-save
+Save as an rds file for easy access within R:
 
 ```{r}
 timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")

@@ -1,14 +1,16 @@
 ---
-title: "sdp_sim_w_recovery"
+title: "sdp_simulate"
 format: html
 editor: visual
 ---
 
-## Running Simulations with Recovery
+## Running Parasite Simulations
 
-This document features code to run simulations across 144 landscapes with different recovery rates.
+This document features code to run simulations across 144 landscapes (of varying parasite density and spatial aggregation) with different recovery rates.
 
 ### Setup
+
+First load the requisite packages and simulation functions, plus the landscapes that were percolated in "sap_landscape_setup".
 
 ```{r}
 ## load code
@@ -23,6 +25,8 @@ ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
 ```
 
 ### Simulate
+
+Now we can run the parasite simulations for multiple recovery rates, replicating the landscape list to allow for those different recovery rates in the map functional.
 
 ```{r}
 ## create vector of recovery probabilities

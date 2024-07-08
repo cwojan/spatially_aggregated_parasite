@@ -1,0 +1,68 @@
+---
+title: "sap_simulate"
+format: html
+editor: visual
+---
+
+## Running Parasite Simulations
+
+This document features code to run simulations across 144 landscapes (of varying parasite density and spatial aggregation) with different recovery rates.
+
+### Setup
+
+First load the requisite packages and simulation functions, plus the landscapes that were percolated in "sap_landscape_setup".
+
+```{r}
+## load code
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+source("parasite_sim_functions.R")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+```
+
+### Simulate
+
+Now we can run the parasite simulations for multiple recovery rates, replicating the landscape list to allow for those different recovery rates in the map functional.
+
+```{r}
+## create vector of recovery probabilities
+recovs <- rep(c(0.05, 0.15, 0.25), 144)
+## create replicated list for mapping
+ls_rep <- rep(ls_list, each = 3)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+recov_sims <- future_map2(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim(landscape = .x, n_hosts = 96, n_moves = 100,
+                n_reps = 10, recov_prob = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+plan(sequential)
+
+## save simulations
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(recov_sims, str_c("sim_output/recov_sims_", timestamp, ".rds"))
+
+## filter out a dataframe of the final timestep
+recov_sim_data <- map_df(
+  recov_sims,
+  function(x){
+    filter(x, time == 100)
+  }
+)
+
+rm(recov_sims)
+
+## save just the final timestep results
+write_rds(recov_sim_data, str_c("sim_output/recov_sim_data", timestamp, ".rds"))
+recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_093356.rds")
+```

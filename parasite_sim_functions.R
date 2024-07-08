@@ -42,10 +42,10 @@
 #' added gc()
 ##
 
-
-library(tidyverse)
-library(som.nn)
-library(ape)
+## load libraries to use
+library(tidyverse) # general data manipulation
+library(som.nn) # for calculating distance matrix on torus (som.nn::dist.torus)
+library(ape) # for calculating Moran's I (ape::Moran.I)
 
 #####
 # Basic Fast Landscape Percolator Function 
@@ -90,7 +90,7 @@ fast_ls_perc <- function(size, prop, cluster){
     point <- sample(possibles, size = 1, prob = coords[coords$id %in% possibles,]$weight)
     coords[coords$id %in% point, "value"] <- fill
     
-    ## Record current ones
+    ## Record current ones (filled cells)
     ones <- coords$value == fill
     
     ## Select only the columns of points with 1 as their value
@@ -102,7 +102,7 @@ fast_ls_perc <- function(size, prop, cluster){
                                (1 + max(inv_dists_filt[x,]))^cluster
                              })
     
-    ## Refill the possible cells for percolation as only the remaining zeroes
+    ## Refresh the possible cells for percolation as only the remaining zeroes
     possibles <- coords %>%
       filter(value == 1-fill) %>%
       #slice_max(weight, n = floor((length(coords$weight) * cluster))) %>%
@@ -162,7 +162,7 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both",
   max_x <- max(coords$x)
   max_y <- max(coords$y)
   
-  ## set up moves to sample from
+  ## set up moves to sample from (stay, move left, right, up, or down)
   moveset <- tibble(
     move_id = 1:5,
     xmove = c(0, 0, 0, -1, 1),
