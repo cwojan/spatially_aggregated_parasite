@@ -8,14 +8,15 @@ editor: visual
 
 ### Setup
 
-```{r}
+Load tidyverse library for easy data manipulation.
 
+```{r}
 library(tidyverse)
 ```
 
 ### Create Non-Spatial Model Function
 
-Inputs needed:
+First, we create a function for non-spatial modeling of parasite acquisition and loss, with the following inputs:
 
 -Probability of parasite acquisition (0.5 \* density)
 
@@ -24,33 +25,17 @@ Inputs needed:
 -timesteps / number of draws
 
 ```{r}
-## test
-acquire <- 0.5 * 0.5
-loss <- 0.05
-times <- 100
-hosts <- 96
-
-
-test_data <- tibble(host = rep(1:hosts, each = times),
-                    time = rep(1:times, hosts))
-
-infection <- test_data %>%
-  mutate(parasite_gain = rbinom(n = n(), size = 1, prob = acquire),
-         duration = rnbinom(n = n(), size = 1, prob = loss),
-         lose_point = time + duration,
-         lost = parasite_gain * as.numeric(lose_point <= 100)) %>%
-  group_by(host) %>%
-  mutate(cum_burden = cumsum(parasite_gain),
-         cum_losses = cumsum(lost),
-         cur_burden = cum_burden - cum_losses) %>%
-  filter(time == times)
-
-
-## write generic function
-
+## write generic function, takes:
+# prop - proportion of cells occupied by parasites
+# n_hosts - number of hosts in population
+# n_times - number of timesteps in each simulation
+# infec_prob - probability of parasite acquisition given host contact with parasite
+# recov_prob - rate of parasit loss
+# n_reps - number of replicate simulations to run
 nonspatial_parasite_sim <- function(prop, n_hosts = 96, n_times = 100, 
                                     infec_prob = 0.5, recov_prob, n_reps){
   
+  ## create empty host data frame, with a row for each host at each timestep for each simulation replicate
   host_data <- tibble(host = rep(rep(1:n_hosts, each = n_times), n_reps),
                       time = rep(rep(1:n_times, n_hosts), n_reps),
                       rep_id = rep(1:n_reps, each = n_hosts * n_times),
@@ -58,15 +43,20 @@ nonspatial_parasite_sim <- function(prop, n_hosts = 96, n_times = 100,
                       infec_prob = infec_prob,
                       recov_prob = recov_prob)
   
+  ## add and lose parasites
   infected <- host_data %>%
+    ## each host gains parasites via binomial distribution draws
+    ## each parasite gets duration from negative binomial draw, compare to timesteps for time of loss
     mutate(parasite_gain = rbinom(n = n(), size = 1, prob = prop * infec_prob),
            duration = rnbinom(n = n(), size = 1, prob = recov_prob),
            lose_point = time + duration,
            lost = parasite_gain * as.numeric(lose_point <= 100)) %>%
+    ## group data by host for each simulation replicate, and calculate parasite burdens
     group_by(host, rep_id) %>%
     mutate(cum_burden = cumsum(parasite_gain),
            cum_losses = cumsum(lost),
            cur_burden = cum_burden - cum_losses) %>%
+    ## only grab the last timestep, results of simulation
     filter(time == n_times)
   
   return(infected)
@@ -77,15 +67,17 @@ nonspatial_parasite_sim <- function(prop, n_hosts = 96, n_times = 100,
 test_out <- nonspatial_parasite_sim(prop = 0.9, recov_prob = 0.05, n_reps = 10)
 ```
 
-works!
-
 ### Run many non spatial "simulations"
+
+Now we use the function to run a set of simulations to compare to spatially derived results.
 
 ```{r}
 
+## set the same density values and recovery rates as for the spatial model
 densities <- rep((1:9)/10, 3)
 recovs <- rep(c(0.05, 0.15, 0.25), each = 9)
 
+## run the non-spatial function for the above parameter space
 ns_sim_output <- map2(
   .x = densities,
   .y = recovs,
@@ -94,15 +86,19 @@ ns_sim_output <- map2(
   bind_rows()
 ```
 
-### Compare sims
+### Compare Models
+
+Now we can compare the non-spatial and spatial results visually.
 
 ```{r}
 
+## read in the spatial model results
 recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
 
-nostay_sim_data <- read_rds("sim_output/nostay_sim_data20240611_130259.rds")
 
-stay_summary <- recov_sim_data %>%
+## summarixe results of both models to get dispersion values
+
+spatial_summary <- recov_sim_data %>%
   filter(cluster == 0) %>%
   group_by(prop, rep_id, recov_prob) %>%
   summarize(mean_cur = mean(cur_burden),
@@ -115,8 +111,7 @@ stay_summary <- recov_sim_data %>%
             mean_diff = mean_cur - mean_cum,
             var_diff = var_cur - var_cum)
 
-nostay_summary <- nostay_sim_data%>%
-  filter(cluster == 0) %>%
+non_spatial_summary <- ns_sim_output %>%
   group_by(prop, rep_id, recov_prob) %>%
   summarize(mean_cur = mean(cur_burden),
             mean_cum = mean(cum_burden),
@@ -128,24 +123,12 @@ nostay_summary <- nostay_sim_data%>%
             mean_diff = mean_cur - mean_cum,
             var_diff = var_cur - var_cum)
 
-ns_summary <- ns_sim_output %>%
-  group_by(prop, rep_id, recov_prob) %>%
-  summarize(mean_cur = mean(cur_burden),
-            mean_cum = mean(cum_burden),
-            var_cur = var(cur_burden),
-            var_cum = var(cum_burden),
-            disp_cur = var_cur / mean_cur,
-            disp_cum = var_cum / mean_cum,
-            disp_diff = disp_cur - disp_cum,
-            mean_diff = mean_cur - mean_cum,
-            var_diff = var_cur - var_cum)
+## combine data from both models
+comp_summary <- spatial_summary %>%
+  mutate(sim_type = "spatial") %>%
+  bind_rows(non_spatial_summary %>% mutate(sim_type = "non_spatial"))
 
-## combine data
-comp_summary <- stay_summary %>%
-  mutate(sim_type = "spatial_w_stay") %>%
-  bind_rows(ns_summary %>% mutate(sim_type = "non_spatial"))
-
-
+## visualize the difference in ending burden dispersion between model types
 ggplot(data = comp_summary, aes(x = prop, y = disp_cur, color = sim_type)) +
   geom_jitter(width = 0.01, height = 0) +
   geom_smooth(method = "lm", se = FALSE) +
@@ -157,24 +140,5 @@ ggplot(data = comp_summary, aes(x = prop, y = disp_cur, color = sim_type)) +
   scale_color_viridis_d(name = "Model Type", labels = c("Non-Spatial", "Spatial"), option = "cividis") +
   theme_bw()
 
-test_lm <- lm(var_cur ~ sim_type + prop + recov_prob, data = comp_summary)
 
-summary(test_lm)
-
-ggplot(data = comp_summary, aes(x = sim_type, y = var_cur, color = prop)) +
-  geom_jitter() +
-  facet_wrap(vars(recov_prob)) +
-  theme_bw()
-
-ggplot(data = recov_sim_data %>% filter(cluster == 0), aes(x = cum_burden)) +
-  geom_histogram() +
-  facet_grid(rows = vars(prop), cols = vars(recov_prob))
-
-ggplot(data = ns_sim_output, aes(x = cum_burden)) +
-  geom_histogram() +
-  facet_grid(rows = vars(prop), cols = vars(recov_prob))
-
-ggplot(data = nostay_sim_data, aes(x = cum_burden)) +
-  geom_histogram() +
-  facet_grid(rows = vars(prop), cols = vars(recov_prob))
 ```

@@ -4,11 +4,15 @@ format: html
 editor: visual
 ---
 
+NOTE: this can go in the figure script
+
 ## Analyzing Simulation Results with the Hoover Index
 
-This script calculates the Hoover index value for each simulation of a set. Hoover index varies from 0 to one, representing the proportion of parasites needed to be rearranged to generate an even distribution among hosts (0, means already even, \~1 means highly aggregated). See McVinish and LEster (2020) "Measuring aggregation in parasite populations"
+This script calculates the Hoover index value for each set of simulations. Hoover index varies from 0 to one, representing the proportion of parasites needed to be rearranged to generate an even distribution among hosts (0, means already even, \~1 means highly aggregated). See McVinish and LEster (2020) "Measuring aggregation in parasite populations"
 
 ### Setup
+
+Load libraries, and the dataframe of the last timestep of a set of simulations
 
 ```{r}
 ## load code
@@ -40,14 +44,15 @@ hoover_index <- function(values){
 
 
 ## test function for a single simulation
-
+## create simulation identifier
 recov_sim_data <- mutate(recov_sim_data,
                          sim_id = str_c(prop, cluster, recov_prob, rep_id, sep = "_"))
+## grab just one simulation
 single_sim <- filter(recov_sim_data, sim_id == "0.1_0_0.05_1")
-
+## run the function on that one simulation
 test_hi <- hoover_index(single_sim$cur_burden)
 
-## do for all sims
+## run hoover index function on all simulations
 summary_data <- recov_sim_data %>%
   group_by(prop, cluster, moran, rep_id, recov_prob) %>%
   summarize(mean_cur = mean(cur_burden),
