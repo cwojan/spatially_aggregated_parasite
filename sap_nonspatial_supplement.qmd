@@ -1,10 +1,12 @@
 ---
-title: "sap_nonspatial_model"
+title: "sap_nonspatial_supplement"
 format: html
 editor: visual
 ---
 
 ## Comparing Spatial ABM to a Non-Spatial Model
+
+This document provides code for spatial to non-spatial model comparisons for Supplement 1.
 
 ### Setup
 

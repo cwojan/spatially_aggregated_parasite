@@ -1,12 +1,12 @@
 ---
-title: "sap_timestep_testing"
+title: "sap_timestep_supplement"
 format: html
 editor: visual
 ---
 
 ## Testing Simulations Over Longer Times
 
-This document features code to run simulations for 1000 timesteps to show when qualitative patterns emerge.
+This document features code to run simulations for 1000 timesteps to show when qualitative patterns emerge. It provide the information for Supplement 2.
 
 ### Setup
 

@@ -6,25 +6,41 @@ editor: visual
 
 ## Spatially Aggregated Parasite Model Figures
 
+This document features code that summarizes simulation results, filters lists of landscape configurations, and produces illustrative figures of both. Figures can then be saved with the "ggsave" function.
+
 ### Setup
+
+First, load the requisite packages, simulated results, percolated landscapes, and create a function for calculating the Hoover index of a parasite burden distribution.
 
 ```{r}
 ## load code
 library(tidyverse)
 library(broom)
 
-## load data
-recov_sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
+## load simulation result data
+sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
 
 ## load ls data
 ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+
+## write Hoover index function
+## it just takes a vector of numbers ("values")
+## then it calculates the Hoover index as per the formula
+hoover_index <- function(values){
+  mean_val <- mean(values) 
+  hoover <- sum(abs(values - mean_val))/(2*length(values)*mean_val)
+  return(hoover)
+}
 ```
 
-### Figure 1
+### Summarize
+
+Now let's summarize the parasite burden distributions from the simulation results.
 
 ```{r}
 
-f1_data <- recov_sim_data %>%
+## create new data frame with mean, variance, dispersion, hoover index of burdens
+sim_summary <- sim_data %>%
   group_by(prop, cluster, moran, rep_id, recov_prob) %>%
   summarize(mean_cur = mean(cur_burden),
             mean_cum = mean(cum_burden),
@@ -34,15 +50,45 @@ f1_data <- recov_sim_data %>%
             disp_cum = var_cum / mean_cum,
             disp_diff = disp_cur - disp_cum,
             mean_diff = mean_cur - mean_cum,
-            var_diff = var_cur - var_cum)
+            var_diff = var_cur - var_cum,
+            hoover = hoover_index(cur_burden))
+```
 
-fig1 <- ggplot(f1_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
+### "Snapshot" Burden Aggregation Figures
+
+This is code to show how the aggregation of "snapshot" parasite burdens varies among simulations, as measured by dispersion and the Hoover index.
+
+```{r}
+
+## this figure has "snapshot" burden dispersion on y axis, spatial aggregation on x axis, parasite density as color, and recovery rate as panels
+disp_fig <- ggplot(sim_summary, aes(x = moran, y = disp_cur, color = factor(prop))) +
   geom_point(size = 4) +
   geom_smooth(se = FALSE, method = "lm", linewidth = 3) +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
   labs(y = "'Snapshot' Burden Dispersion") +
-  scale_x_continuous(name = "Parasite Clustering (Moran's I)",
+  scale_x_continuous(name = "Parasite Spatial Aggregation (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18),
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 16),
+        strip.text = element_text(size = 24),
+        axis.title = element_text(size = 32),
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
+
+
+## this figure has "snapshot" burden Hoover index on y axis, spatial aggregation on x axis, parasite density as color, and recovery rate as panels
+hoover_fig <- ggplot(sim_summary, aes(x = moran, y = hoover, color = factor(prop))) +
+  geom_point(size = 4) +
+  geom_smooth(se = FALSE, method = "lm", linewidth = 3) +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "Hoover Index of \n'Snapshot' Burden Distribution") +
+  scale_x_continuous(name = "Parasite Spatial Aggregation (Moran's I)",
                      breaks = c(0, 0.06, 0.12, 0.18),
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
@@ -56,14 +102,21 @@ fig1 <- ggplot(f1_data, aes(x = moran, y = disp_cur, color = factor(prop))) +
         axis.title.x.top = element_text(size = 32, vjust = 1))
 ```
 
-### Figure 2
+### Burden Correlation Figure
+
+This code draws a figure showing the correlation coefficients among individual "snapshot" and cumulative burdens for each simulation.
 
 ```{r}
+
+## the correlations need to be calculated with a wrapper function  to cor.test that moves through the simulation results and keeps track of the parameters for each simulation 
+## first set number of hosts used in simulations
+n_hosts <- 96
+## calculate correlations (takes a second)
 cors <- map_df(
-  seq(1, nrow(recov_sim_data), by = 96),
+  seq(1, nrow(sim_data), by = n_hosts),
   function(x){
-    sim_rows <- x:(x+95)
-    temp_dat <- recov_sim_data[sim_rows,]
+    sim_rows <- x:(x+(n_hosts - 1))
+    temp_dat <- sim_data[sim_rows,]
     temp_prop <- temp_dat$prop %>% unique()
     temp_moran <- temp_dat$moran %>% unique()
     temp_recov <- temp_dat$recov_prob %>% unique()
@@ -71,13 +124,14 @@ cors <- map_df(
       mutate(prop = temp_prop, moran = temp_moran, recov_prob = temp_recov)
   }) 
 
-fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
+## now we can draw the figure - correlation on the y axis, spatial agggregation on x axis, density as color, recovery as panels
+corr_fig <- ggplot(cors, aes(x = moran, y = estimate)) +
   geom_point(aes(color = factor(prop)), size = 4) +
   geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 3) +
   facet_wrap(vars(recov_prob)) +
   scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
   labs(y = "Correlation between 'Snapshot' \nand Cumulative Burden") +
-  scale_x_continuous(name = "Parasite Clustering (Moran's I)",
+  scale_x_continuous(name = "Parasite Spatial Aggregation (Moran's I)",
                      breaks = c(0, 0.06, 0.12, 0.18),
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
@@ -91,33 +145,37 @@ fig2 <- ggplot(cors, aes(x = moran, y = estimate)) +
         axis.title.x.top = element_text(size = 32, vjust = 1))
 ```
 
-### Figure 3
+### Sample Landscape Figure
+
+This code filters out a few landscape configurations to show the parameter space visually (parasite spatial aggregation and density).
 
 ```{r}
-## create a list key
+## create a key to the list of landscapes, so each landscape has an ID
 ls_key <- map_df(ls_list, function(x){x$ls_stats}, .id = "element_id")
 
-## grab 9 landscapes
+## grab 9 landscapes across different parasite densities and clustering factors
 ls_sub_ids <- ls_key %>%
   filter(prop %in% c(0.2, 0.4, 0.6), cluster %in% c(0, 7, 15)) %>%
   mutate(element_id = as.numeric(element_id)) %>%
   pull(element_id)
 
-## subset list
+## subset list for those 9 landscapes
 ls_subset <- ls_list[ls_sub_ids]
 
-## pull coords
+## pull coordinates from the landscape list
 ls_list_coords <- map_df(ls_subset, function(x)
   {x$coords %>% 
     bind_cols(x$ls_stats)})
 
+## plot the landscapes in a 3x3 grid
+## each column a different parasite density, each row a different clustering factor
 ls_plots <- ggplot(data = ls_list_coords) +
   geom_tile(aes(x = x, y = y, fill = factor(value), color = factor(value))) +
   scale_fill_manual(values = c("white", "#7A0019"), guide = "none") +
   scale_color_manual(values = c("white", "#7A0019"), guide = "none") +
   coord_fixed() +
   facet_grid(rows = vars(cluster), cols = vars(prop)) +
-  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Clustering", breaks = NULL, labels = NULL)) +
+  scale_y_continuous(name = "", sec.axis = sec_axis(~ . , name = "Clustering Factor", breaks = NULL, labels = NULL)) +
   scale_x_continuous(name = "", sec.axis = sec_axis(~ . , name = "Parasite Density", breaks = NULL, labels = NULL)) +
   theme_bw() +
   theme(axis.text = element_blank(),
@@ -130,21 +188,4 @@ ls_plots <- ggplot(data = ls_list_coords) +
 
 ```
 
-### Save
-
-```{r}
-
-timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
-
-## save fig 1
-ggsave(str_c("figures/eeid23_fig1_", timestamp, ".tiff"), plot = fig1,
-       units = "in", width = 12, height = 8)
-
-## save fig 2
-ggsave(str_c("figures/eeid23_fig2_", timestamp, ".tiff"), plot = fig2,
-       units = "in", width = 12, height = 8)
-
-## save fig 3
-ggsave(str_c("figures/eeid23_fig3_", timestamp, ".tiff"), plot = ls_plots,
-       units = "in", width = 8, height = 8)
-```
+### 
