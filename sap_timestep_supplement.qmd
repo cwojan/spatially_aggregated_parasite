@@ -10,6 +10,8 @@ This document features code to run simulations for 1000 timesteps to show when q
 
 ### Setup
 
+First load all the necessary code for simulations, and the landscapes to simulate on.
+
 ```{r}
 # load code
 library(tidyverse)
@@ -19,7 +21,7 @@ library(som.nn)
 library(broom)
 source("parasite_sim_functions.R")
 
-## load ls data
+## load landscape data
 ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
 
 ## filter for only landscapes with no clustering
@@ -33,6 +35,8 @@ rm(ls_list)
 ```
 
 ### Simulate
+
+Now simulate for the same recovery rate parameter space, but for more timesteps (1000 instead of 100).
 
 ```{r}
 ## create vector of recovery probabilities
@@ -63,10 +67,13 @@ write_rds(long_sims, str_c("sim_output/long_sims_", timestamp, ".rds"))
 
 ### Examine
 
+Now we can look at how our variables of interest change over the course of the simulations
+
 ```{r}
+## read in data if not already in workspace
 long_sims <- read_rds("sim_output/long_sims_20240702_091817.rds")
 
-## filter something easier to plot
+## filter something easier to plot, only every 20th timestep
 long_sim_data <- map_df(
   long_sims,
   function(x){
@@ -74,6 +81,7 @@ long_sim_data <- map_df(
   }
 )
 
+## summarize the parasite burdens at each (20th) timestep
 long_summary <- long_sim_data %>%
   filter(time != 0) %>%
   group_by(prop, rep_id, recov_prob, cluster, time) %>%
@@ -87,7 +95,7 @@ long_summary <- long_sim_data %>%
             mean_diff = mean_cur - mean_cum,
             var_diff = var_cur - var_cum)
 
-
+## plot how the dispersion of "snapshot" parasite burdens changes over the course of the simulations
 ggplot(long_summary, aes(x = time, y = disp_cur, color = factor(prop))) +
   geom_point() +
   geom_smooth(se = FALSE) +
@@ -103,26 +111,15 @@ ggplot(long_summary, aes(x = time, y = disp_cur, color = factor(prop))) +
   theme_bw() +
   theme(legend.position = "bottom")
 
-ggplot(long_summary, aes(x = time, y = disp_cum, color = factor(prop))) +
-  geom_point() +
-  geom_smooth(se = FALSE) +
-  facet_grid(rows = vars(cluster), cols = vars(recov_prob)) +
-  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
-  scale_x_continuous(name = "Timestep",
-                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
-                                         breaks = NULL, labels = NULL)) +
-  scale_y_continuous(name = "'Snapshot' Burden Dispersion",
-                     sec.axis = sec_axis(~ . , name = "Cluster Factor", 
-                                         breaks = NULL, labels = NULL)) +
-  #coord_cartesian(xlim = c(0, 500)) +
-  theme_bw() +
-  theme(legend.position = "bottom")
 
+## create an id column for the simulation results
 long_sim_data <- mutate(long_sim_data, sim_id = str_c(prop, cluster, recov_prob, rep_id, sep = "_"))
 
+## prep simulation and timestep identifiers for correlation calculation
 sim_ids <- rep(unique(long_sim_data$sim_id), each = 50)
 times <- rep(seq(20, 1000, by = 20), 360)
 
+## function to calculate correlations between "snapshot" and cumulative burdens for each (20th) timestep of each simulation
 cor_function <- function(a, b){
     temp_dat <- long_sim_data %>% filter(sim_id == a, time == b)
     temp_prop <- temp_dat$prop %>% unique()
@@ -133,15 +130,17 @@ cor_function <- function(a, b){
     return(result)
 }
 
-cor_function(a = "0.1_0_0.05_1", b = 20)
-
+## run correlation function on long simulation results (takes a while)
 cors <- map2_df(
   .x = sim_ids,
   .y = times,
   ~cor_function(a = .x, b = .y)) 
 
+## save the results
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
 write_rds(cors, str_c("sim_output/long_sim_cors", timestamp, ".rds"))
 
+## plot correlation coefficents over time
 ggplot(cors, aes(x = time, y = estimate, color = factor(prop))) +
   geom_point(alpha = 0.25) +
   geom_smooth(se = FALSE, method = "lm") +
