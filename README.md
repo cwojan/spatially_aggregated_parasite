@@ -14,3 +14,5 @@ There are also two supplementary documents:
 
 1.  "sap_nonspatial_supplement.qmd" compares simulation results from the "simulate" document to a non-spatial version of the model.
 2.  "sap_timestep_supplement.qmd" runs simulation on a smaller subset of landscape matrices to observe trends in outcome variables across more timestep, to see when things stabilize (or don't).
+
+The "old_misc_files" folder contains development files and scratch code.
