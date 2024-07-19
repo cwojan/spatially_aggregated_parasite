@@ -21,7 +21,7 @@ library(som.nn)
 source("parasite_sim_functions.R")
 
 ## load ls data
-ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+ls_list <- read_rds("sim_output/ls_list_20240719_091018.rds")
 ```
 
 ### Simulate

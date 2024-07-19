@@ -22,7 +22,7 @@ library(broom)
 source("parasite_sim_functions.R")
 
 ## load landscape data
-ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+ls_list <- read_rds("sim_output/ls_list_20240719_091018.rds")
 
 ## filter for only landscapes with no clustering
 ls_subset <- map(.x = ls_list, .f = function(x){
@@ -71,7 +71,7 @@ Now we can look at how our variables of interest change over the course of the s
 
 ```{r}
 ## read in data if not already in workspace
-long_sims <- read_rds("sim_output/long_sims_20240702_091817.rds")
+long_sims <- read_rds("sim_output/long_sims_20240719_093849.rds")
 
 ## filter something easier to plot, only every 20th timestep
 long_sim_data <- map_df(

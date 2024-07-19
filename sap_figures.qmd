@@ -18,10 +18,10 @@ library(tidyverse)
 library(broom)
 
 ## load simulation result data
-sim_data <- read_rds("sim_output/recov_sim_data20230417_132954.rds")
+sim_data <- read_rds("sim_output/recov_sim_data20240719_092424.rds")
 
 ## load ls data
-ls_list <- read_rds("sim_output/ls_list_20230416_103809.rds")
+ls_list <- read_rds("sim_output/ls_list_20240719_091018.rds")
 
 ## write Hoover index function
 ## it just takes a vector of numbers ("values")
@@ -185,7 +185,6 @@ ls_plots <- ggplot(data = ls_list_coords) +
         axis.title.x.top = element_text(size = 32, vjust = 1),
         axis.title.y.right = element_text(size = 32, vjust = 1),
         strip.text = element_text(size = 24))
-
 ```
 
 ### 
