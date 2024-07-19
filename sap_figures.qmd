@@ -187,4 +187,24 @@ ls_plots <- ggplot(data = ls_list_coords) +
         strip.text = element_text(size = 24))
 ```
 
-### 
+## Saving Figures
+
+```{r}
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+
+## save landscape plots
+ggsave(str_c("figures/sap_fig1_landscapes_", timestamp, ".tiff"), plot = ls_plots,
+       units = "in", width = 12, height = 8)
+
+## save dispersion fig
+ggsave(str_c("figures/sap_fig2_disp_", timestamp, ".tiff"), plot = disp_fig,
+       units = "in", width = 12, height = 8)
+
+## save hoover fig
+ggsave(str_c("figures/sap_fig3_hoover_", timestamp, ".tiff"), plot = hoover_fig,
+       units = "in", width = 12, height = 8)
+
+## save correlation fig
+ggsave(str_c("figures/sap_fig4_corrs_", timestamp, ".tiff"), plot = corr_fig,
+       units = "in", width = 12, height = 8)
+```
