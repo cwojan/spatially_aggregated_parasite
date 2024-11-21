@@ -62,7 +62,7 @@ move_sim_data <- move_sim_data %>%
   mutate(sim_id = str_c(prop, cluster, rep_id, sep = "_")) %>%
   mutate(sex = rep(rep(c("Male","Female"), each = 48), 360),
          move_scenario = rep(
-           rep(c("Male: 0.9, Female: 0.3", "Male: 0.5, Female: 0.3", "Male: 0.7, Female: 0.3"), each = 960),
+           rep(c("Male: 0.9, Female: 0.3", "Male: 0.5, Female: 0.3", "Male: 0.7, Female: 0.5"), each = 960),
                              12))
 
 ## summarize mean and variance of current burdens by sex and simulation
