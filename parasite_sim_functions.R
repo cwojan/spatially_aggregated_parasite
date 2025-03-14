@@ -229,6 +229,84 @@ move_host_fast <- function(hosts, coords, n_moves, n_reps, p_gain = "both",
   return(ungroup(recovered))
 }
 
+## version that only keeps the last timestep
+move_host2 <- function(hosts, coords, n_moves, n_reps, p_gain = "both",
+                           infec_prob = 0.5, recov_prob = 0){
+  
+  ## save number of hosts
+  n_hosts <- nrow(hosts) / n_reps
+  
+  ## grab landscape size for torus wrap
+  max_x <- max(coords$x)
+  max_y <- max(coords$y)
+  
+  ## set up moves to sample from (stay, move left, right, up, or down)
+  moveset <- tibble(
+    move_id = 1:5,
+    xmove = c(0, 0, 0, -1, 1),
+    ymove = c(0, -1, 1, 0, 0)
+  )
+  
+  ## move hosts
+  hosts_moving <- hosts[rep(1:nrow(hosts), each = n_moves + 1),] %>%
+    mutate(time = rep(0:n_moves, n_hosts * n_reps),
+           active = inactivity * runif(n()) >= inactivity^2,
+           move_id = sample(2:5, size = n(), replace = TRUE)^active) %>% ## create moves
+    left_join(moveset, by = "move_id") %>%
+    mutate(xmove = if_else(time == 0, x, as.integer(xmove)),
+           ymove = if_else(time == 0, y, as.integer(ymove)),
+           last = pmax(abs(xmove), abs(ymove)),
+           last = if_else(last > 1, as.integer(NA), last)) %>% ## save last move
+    group_by(rep_id, host_id) %>%
+    mutate(pre_x = cumsum(xmove),
+           pre_y = cumsum(ymove),
+           oob_x = (pre_x - 1) %/% max_x, ## calc out of bounds
+           oob_y = (pre_y - 1) %/% max_y,
+           x = pre_x - (max_x * oob_x), ## wrap around torus
+           y = pre_y - (max_y * oob_y),
+           id = str_c(x, y, sep = "_")
+    ) %>%
+    left_join(select(coords, id, value), by = "id") ## join with parasite data
+  
+  ## add parasites based on scenario
+  if (p_gain == "both") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * rbinom(n = n(), size = 1, prob = infec_prob)))
+  } else if (p_gain == "move") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * last * rbinom(n = n(), size = 1, prob = infec_prob)))
+  } else if (p_gain == "stay") {
+    infected <- hosts_moving %>%
+      mutate(parasite_gain = if_else(time == 0, 0,
+                                     value * as.numeric(!last) * rbinom(n = n(), size = 1, prob = infec_prob)))
+  }
+  
+  ## calc cumulative infection and parasite durations
+  infected <- infected %>%
+    mutate(cum_burden = cumsum(parasite_gain),
+           durations = rnbinom(n = n(), size = 1, prob = recov_prob),
+           lose_points = time + durations)
+  
+  ## calculate when parasites are lost
+  losses <- infected %>%
+    filter(parasite_gain == 1) %>%
+    group_by(rep_id, host_id, lose_points) %>%
+    summarise(losses = n()) %>%
+    rename(time = lose_points)
+  
+  ## calculate current burdens
+  recovered <- infected %>%
+    left_join(losses, by = c("rep_id", "host_id", "time")) %>%
+    mutate(losses = replace_na(losses, 0),
+           cum_losses = cumsum(losses),
+           cur_burden = cum_burden - cum_losses) %>%
+    filter(time == n_moves)
+    
+  gc()
+  return(ungroup(recovered))
+}
 
 #####
 # Environmental Parasite Burden Simulator Function
@@ -263,6 +341,36 @@ parasite_sim <- function(landscape, n_hosts, n_moves, n_reps = 1,
   
   ## Simulate movement and parasite gain
   hosts_moved <- move_host_fast(hosts = hosts, coords = landscape$coords, 
+                                n_moves = n_moves, n_reps = n_reps, p_gain = p_gain,
+                                infec_prob = infec_prob, recov_prob = recov_prob)
+  
+  ## Package and return host and landscape info
+  out <- bind_cols(hosts_moved, landscape$ls_stats) %>%
+    mutate(scenario = p_gain,
+           infec_prob = infec_prob,
+           recov_prob = recov_prob)
+  gc()
+  return(out)
+}
+
+## version that only keeps the last timestep
+parasite_sim2 <- function(landscape, n_hosts, n_moves, n_reps = 1, 
+                         movetypes = tibble(type = 0.2, prop = 1),
+                         p_gain = "both", infec_prob = 0.5, recov_prob = 0){
+  
+  ## Set random starting positions for each host
+  host_origins <- slice_sample(landscape$coords, n = n_hosts * n_reps, replace = TRUE)
+  
+  ## Create host data frame
+  hosts <- host_origins %>%
+    select(x, y, id) %>%
+    mutate(host_id = seq_len(nrow(host_origins)),
+           time = 0,
+           rep_id = rep(seq_len(n_reps), each = n_hosts),
+           inactivity = rep(rep(movetypes$type, movetypes$prop * n_hosts), n_reps))
+  
+  ## Simulate movement and parasite gain
+  hosts_moved <- move_host2(hosts = hosts, coords = landscape$coords, 
                                 n_moves = n_moves, n_reps = n_reps, p_gain = p_gain,
                                 infec_prob = infec_prob, recov_prob = recov_prob)
   

@@ -1,0 +1,137 @@
+---
+title: "sap_big_sim"
+format: html
+editor: visual
+---
+
+## Running Large Parasite Simulations
+
+This document features code to run simulations across 144 landscapes (of varying parasite density and spatial aggregation) with different recovery rates, with high replication.
+
+### Setup
+
+First load the requisite packages and simulation functions, plus the landscapes that were percolated in "sap_landscape_setup".
+
+```{r}
+## load code
+library(tidyverse)
+library(furrr)
+library(ape)
+library(som.nn)
+library(broom)
+source("parasite_sim_functions.R")
+
+## load ls data
+ls_list <- read_rds("sim_output/ls_list_20240719_091018.rds")
+```
+
+### Simulate
+
+Now we can run the parasite simulations for multiple recovery rates, replicating the landscape list to allow for those different recovery rates in the map functional.
+
+```{r}
+## create vector of recovery probabilities
+recovs <- rep(c(0.05, 0.15, 0.25), 144)
+## create replicated list for mapping
+ls_rep <- rep(ls_list, each = 3)
+rm(ls_list)
+
+## run simulations for those probabilities
+# set multisession plan
+plan(multisession)
+# run function in parallel
+big_sims <- future_map2(
+  .x = ls_rep,
+  .y = recovs,
+  ~parasite_sim2(landscape = .x, n_hosts = 96, n_moves = 100,
+                n_reps = 100, recov_prob = .y),
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+plan(sequential)
+
+## save simulations
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(big_sims, str_c("sim_output/recov_sims_", timestamp, ".rds"))
+
+```
+
+### Summarize
+
+Now let's summarize the parasite burden distributions from the simulation results.
+
+```{r}
+
+## write Hoover index function
+## it just takes a vector of numbers ("values")
+## then it calculates the Hoover index as per the formula
+hoover_index <- function(values){
+  mean_val <- mean(values) 
+  hoover <- sum(abs(values - mean_val))/(2*length(values)*mean_val)
+  return(hoover)
+}
+
+## create new data frame with mean, variance, dispersion, hoover index of burdens
+sim_summary <- big_sims %>%
+  bind_rows() %>%
+  group_by(prop, cluster, moran, rep_id, recov_prob) %>%
+  summarize(mean_cur = mean(cur_burden),
+            mean_cum = mean(cum_burden),
+            var_cur = var(cur_burden),
+            var_cum = var(cum_burden),
+            disp_cur = var_cur / mean_cur,
+            disp_cum = var_cum / mean_cum,
+            disp_diff = disp_cur - disp_cum,
+            mean_diff = mean_cur - mean_cum,
+            var_diff = var_cur - var_cum,
+            hoover = hoover_index(cur_burden))
+```
+
+### Visualize
+
+```{r}
+ggplot(sim_summary, aes(x = moran, y = disp_cur, color = factor(prop))) +
+  geom_smooth(se = FALSE, method = "lm") +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "'Snapshot' Burden Dispersion") +
+  scale_x_continuous(name = "Parasite Spatial Aggregation (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18),
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+## the correlations need to be calculated with a wrapper function  to cor.test that moves through the simulation results and keeps track of the parameters for each simulation 
+## first set number of hosts used in simulations
+n_hosts <- 96
+## and make a non-summary df of the sim output
+sim_data <- big_sims %>% bind_rows()
+## calculate correlations (takes a second)
+cors <- map_df(
+  seq(1, nrow(sim_data), by = n_hosts),
+  function(x){
+    sim_rows <- x:(x+(n_hosts - 1))
+    temp_dat <- sim_data[sim_rows,]
+    temp_prop <- temp_dat$prop %>% unique()
+    temp_moran <- temp_dat$moran %>% unique()
+    temp_recov <- temp_dat$recov_prob %>% unique()
+    cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy() %>%
+      mutate(prop = temp_prop, moran = temp_moran, recov_prob = temp_recov)
+  }) 
+
+## now we can draw the figure - correlation on the y axis, spatial agggregation on x axis, density as color, recovery as panels
+ggplot(cors, aes(x = moran, y = estimate)) +
+  geom_smooth(method = "lm", se = FALSE, aes(color = factor(prop))) +
+  facet_wrap(vars(recov_prob)) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "Correlation between 'Snapshot' \nand Cumulative Burden") +
+  scale_x_continuous(name = "Parasite Spatial Aggregation (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18),
+                     sec.axis = sec_axis(~ . , name = "Recovery Rate", 
+                                         breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
