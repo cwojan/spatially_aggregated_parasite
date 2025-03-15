@@ -6,7 +6,7 @@ editor: visual
 
 ## Running Large Parasite Simulations
 
-This document features code to run simulations across 144 landscapes (of varying parasite density and spatial aggregation) with different recovery rates, with high replication.
+This document features code to run simulations across 144 landscapes (of varying parasite density and spatial aggregation) with different recovery rates, with high replication for the supplement.
 
 ### Setup
 
@@ -52,7 +52,7 @@ plan(sequential)
 
 ## save simulations
 timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
-write_rds(big_sims, str_c("sim_output/recov_sims_", timestamp, ".rds"))
+write_rds(big_sims, str_c("sim_output/big_sims_", timestamp, ".rds"))
 
 ```
 
@@ -120,7 +120,11 @@ cors <- map_df(
     temp_recov <- temp_dat$recov_prob %>% unique()
     cor.test(~ cum_burden + cur_burden, data = temp_dat) %>% tidy() %>%
       mutate(prop = temp_prop, moran = temp_moran, recov_prob = temp_recov)
-  }) 
+  })
+
+## Save correlation data
+timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
+write_rds(cors, str_c("sim_output/big_sim_cors_", timestamp, ".rds"))
 
 ## now we can draw the figure - correlation on the y axis, spatial agggregation on x axis, density as color, recovery as panels
 ggplot(cors, aes(x = moran, y = estimate)) +
