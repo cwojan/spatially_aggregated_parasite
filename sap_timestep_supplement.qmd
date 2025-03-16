@@ -14,17 +14,10 @@ First load all the necessary code for simulations, and the landscapes to simulat
 
 ```{r}
 # load code
-library(dplyr) # general data manipulation
-library(stringr) # for string manipulation
-library(purrr) # for mapping functions
-library(tidyr) # for data manipulation
-library(tibble) # for tibbles instead of dataframes
 library(readr) # for writing rds
 library(ggplot2) # for plotting
 library(future)
 library(furrr)
-library(ape)
-library(som.nn)
 library(broom)
 source("parasite_sim_functions.R")
 
@@ -67,7 +60,7 @@ plan(sequential)
 
 ## save simulations
 timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
-write_rds(long_sims, str_c("sim_output/long_sims_", timestamp, ".rds"))
+#write_rds(long_sims, str_c("sim_output/long_sims_", timestamp, ".rds"))
 
 
 ```
@@ -145,7 +138,7 @@ cors <- map2_df(
 
 ## save the results
 timestamp <- format(Sys.time(), format = "%Y%m%d_%H%M%S")
-write_rds(cors, str_c("sim_output/long_sim_cors", timestamp, ".rds"))
+#write_rds(cors, str_c("sim_output/long_sim_cors", timestamp, ".rds"))
 
 ## plot correlation coefficents over time
 ggplot(cors, aes(x = time, y = estimate, color = factor(prop))) +

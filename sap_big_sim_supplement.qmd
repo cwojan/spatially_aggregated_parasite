@@ -14,19 +14,13 @@ First load the requisite packages and simulation functions, plus the landscapes 
 
 ```{r}
 ## load code
-library(dplyr) # general data manipulation
-library(stringr) # for string manipulation
-library(purrr) # for mapping functions
-library(tidyr) # for data manipulation
-library(tibble) # for tibbles instead of dataframes
+
 library(readr) # for writing rds
 library(ggplot2) # for plotting
 library(future)
 library(furrr)
-library(ape)
-library(som.nn)
 library(broom)
-source("parasite_sim_functions.R")
+source("parasite_sim_functions.R") ## loads required packages as well
 
 ## load ls data
 ls_list <- read_rds("sim_output/ls_list_20240719_091018.rds")
