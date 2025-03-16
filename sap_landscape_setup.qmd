@@ -13,7 +13,13 @@ This document features code to setup landscapes for simulations.
 First load the requisite libraries, as well as the script featuring the landscape percolation function.
 
 ```{r}
-library(tidyverse)
+library(dplyr) # general data manipulation
+library(stringr) # for string manipulation
+library(purrr) # for mapping functions
+library(tidyr) # for data manipulation
+library(tibble) # for tibbles instead of dataframes
+library(readr) # for writing rds
+library(future)
 library(furrr) # for parallel computing
 library(ape)
 library(som.nn)

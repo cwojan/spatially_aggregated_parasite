@@ -14,7 +14,13 @@ First load the requisite packages and simulation functions, plus the landscapes 
 
 ```{r}
 ## load code
-library(tidyverse)
+library(dplyr) # general data manipulation
+library(stringr) # for string manipulation
+library(purrr) # for mapping functions
+library(tidyr) # for data manipulation
+library(tibble) # for tibbles instead of dataframes
+library(readr) # for writing rds
+library(future)
 library(furrr)
 library(ape)
 library(som.nn)

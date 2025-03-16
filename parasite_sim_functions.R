@@ -7,6 +7,12 @@
 ##
 
 ##
+#' update 20250314-16
+#' added alternate version of the movement and sim functions for more replication
+#' also adjusted package lodaing
+##
+
+##
 #' update 20230219
 #' host movement and parasite sim functions fully vectorized
 #' diagonal movement no longer possible
@@ -43,7 +49,11 @@
 ##
 
 ## load libraries to use
-library(tidyverse) # general data manipulation
+library(dplyr) # general data manipulation
+library(stringr) # for string manipulation
+library(purrr) # for mapping functions
+library(tidyr) # for data manipulation
+library(tibble) # for tibbles instead of dataframes
 library(som.nn) # for calculating distance matrix on torus (som.nn::dist.torus)
 library(ape) # for calculating Moran's I (ape::Moran.I)
 
