@@ -15,7 +15,7 @@ First load the requisite packages and simulation functions, plus the landscapes 
 ```{r}
 ## load code
 
-library(readr) # for writing rds
+library(readr) # for read/write rds
 library(ggplot2) # for plotting
 library(future)
 library(furrr)

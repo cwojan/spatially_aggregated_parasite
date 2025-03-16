@@ -13,7 +13,7 @@ This document features code to setup landscapes for simulations.
 First load the requisite libraries, as well as the script featuring the landscape percolation function.
 
 ```{r}
-library(readr) # for writing rds
+library(readr) # for read/write rds
 library(future)
 library(furrr) # for parallel computing
 source("parasite_sim_functions.R") ## loads required packages as well
