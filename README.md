@@ -12,10 +12,11 @@ The key functions are found in the "parasite_sim_functions.R" script. They inclu
 
 To run the model, first use the "sap_landscape_setup.qmd" document to generate a suite of landscapes for simulating upon. Then, use the "sap_simulate.qmd" document to run the simulation model on the suite of landscapes you generated. Finally, you can use the sap_figures.qmd" document to summarize and visualize the simulation results.
 
-There are also two supplementary documents:
+There are also three supplementary documents:
 
 1.  "sap_nonspatial_supplement.qmd" compares simulation results from the "simulate" document to a non-spatial version of the model.
-2.  "sap_timestep_supplement.qmd" runs simulation on a smaller subset of landscape matrices to observe trends in outcome variables across more timestep, to see when things stabilize (or don't).
+2.  "sap_timestep_supplement.qmd" runs simulations on a smaller subset of landscape matrices to observe trends in outcome variables across more timestep, to see when things stabilize (or don't).
+3.  "sap_big_sim_supplement.qmd" runs simulations with 100 replicates per landscape to corroborate the smaller replicate simulations. 
 
 The "old_misc_files" folder contains development files and scratch code.
 
@@ -154,6 +155,7 @@ disp_fig <- ggplot(sim_summary, aes(...)) + geom_point() + ...
 
 1. **sap_nonspatial_supplement.qmd**: Compares simulation results to a non-spatial version of the model.
 2. **sap_timestep_supplement.qmd**: Runs simulations on a subset of landscape matrices to observe trends over more timesteps.
+3. **sap_big_sim_supplement.qmd**: Runs simulations with 100 replicates per landscape to corroborate the smaller replicate simulations. 
 
 ### Non-Spatial Model Comparison
 
