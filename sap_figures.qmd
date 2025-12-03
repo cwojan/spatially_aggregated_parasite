@@ -20,6 +20,7 @@ library(ggplot2) # for plotting
 library(tibble) # for tibbles instead of dataframes
 library(readr) # for read/write rds
 library(ggplot2) # for plotting
+library(stringr) 
 library(broom)
 
 ## load simulation result data
@@ -76,6 +77,23 @@ disp_fig <- ggplot(sim_summary, aes(x = moran, y = disp_cur, color = factor(prop
                      breaks = c(0, 0.06, 0.12, 0.18),
                      sec.axis = sec_axis(~ . , name = "Recovery Rate", 
                                          breaks = NULL, labels = NULL)) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 16),
+        strip.text = element_text(size = 24),
+        axis.title = element_text(size = 32),
+        axis.text = element_text(size = 16),
+        axis.title.x.top = element_text(size = 32, vjust = 1))
+
+## this figure has "snapshot" burden dispersion on y axis, spatial aggregation on x axis, parasite density as color, but no panels
+disp2_fig <- ggplot(sim_summary, aes(x = moran, y = disp_cur, color = factor(prop))) +
+  geom_point(size = 3) +
+  geom_smooth(se = FALSE, method = "lm", linewidth = 2) +
+  scale_color_viridis_d(name = "Parasite Density \n(Proportion Cells Occupied)") +
+  labs(y = "Parasite Aggregation on Hosts\n(Variance : Mean Ratio)") +
+  scale_x_continuous(name = "Parasite Spatial Clustering (Moran's I)",
+                     breaks = c(0, 0.06, 0.12, 0.18)) +
   theme_bw() +
   theme(legend.position = "bottom",
         legend.title = element_text(size = 24),
@@ -203,6 +221,10 @@ ggsave(str_c("figures/sap_fig1_landscapes_", timestamp, ".tiff"), plot = ls_plot
 
 ## save dispersion fig
 ggsave(str_c("figures/sap_fig2_disp_", timestamp, ".tiff"), plot = disp_fig,
+       units = "in", width = 12, height = 8)
+
+## save simple dispersion fig
+ggsave(str_c("figures/sap_simple_disp_", timestamp, ".tiff"), plot = disp2_fig,
        units = "in", width = 12, height = 8)
 
 ## save hoover fig
